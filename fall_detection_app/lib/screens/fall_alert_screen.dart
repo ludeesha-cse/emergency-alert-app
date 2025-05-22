@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import '../services/sms_service.dart';
 import '../services/settings_service.dart';
+import '../services/location_service.dart';
 import '../models/settings_model.dart';
 
 class FallAlertScreen extends StatefulWidget {
@@ -74,6 +75,21 @@ class _FallAlertScreenState extends State<FallAlertScreen> {
       await _loadSettings();
     }
 
+    // Try to get location from LocationService if not provided
+    var currentPosition = widget.currentPosition;
+    if (currentPosition == null) {
+      try {
+        final locationService = await LocationService.initialize();
+        currentPosition = await locationService.getCurrentLocation();
+        if (currentPosition == null) {
+          // Try to get last known location as fallback
+          currentPosition = await locationService.getLastKnownLocation();
+        }
+      } catch (e) {
+        debugPrint('Error getting position: $e');
+      }
+    }
+
     final contacts = _settings?.emergencyContacts ?? [];
     if (contacts.isEmpty) {
       if (mounted) {
@@ -84,29 +100,38 @@ class _FallAlertScreenState extends State<FallAlertScreen> {
       return;
     }
 
-    final phoneNumbers = contacts
-        .map((contact) => contact.phoneNumber)
-        .toList();
-    final message =
+    // Get message with location if available
+    final baseMessage =
         _settings?.emergencyMessage ?? "I've fallen and need assistance.";
+    final smsMessage = currentPosition != null
+        ? "$baseMessage\nLocation: ${currentPosition.latitude}, ${currentPosition.longitude}"
+        : baseMessage;
 
-    // Send SMS
-    final result = await SmsService.sendSms(
+    // Send SMS to all contacts
+    final List<String> phoneNumbers = [];
+    for (var contact in contacts) {
+      phoneNumbers.add(contact.phoneNumber);
+    }
+
+    final sendResult = await SmsService.sendSms(
       recipients: phoneNumbers,
-      message: message,
-      position: widget.currentPosition,
+      message: smsMessage,
+      position: currentPosition,
     );
 
     setState(() {
-      _smsSent = result;
+      _smsSent = sendResult;
     });
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            result ? 'Emergency alert sent' : 'Failed to send emergency alert',
+            sendResult
+                ? 'Emergency alert sent'
+                : 'Failed to send emergency alert',
           ),
+          backgroundColor: sendResult ? Colors.green : Colors.red,
         ),
       );
     }
