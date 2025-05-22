@@ -57,12 +57,13 @@
             android:name="flutterEmbedding"
             android:value="2" />
             
-        <!-- Foreground service for background execution -->
+        <!-- Foreground service for background execution (FlutterBackgroundService plugin) -->
         <service
-            android:name="com.dexterous.flutterbackgroundservice.FlutterBackgroundService"
-            android:foregroundServiceType="location|microphone"
+            android:name="id.flutter.flutter_background_service.BackgroundService"
             android:enabled="true"
-            android:exported="false"/>
+            android:exported="true"
+            android:stopWithTask="false"
+            android:foregroundServiceType="location|microphone" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

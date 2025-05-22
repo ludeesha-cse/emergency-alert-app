@@ -42,6 +42,7 @@ dependencies:
   torch_light: ^1.0.0 # For flashlight control
   vibration: ^3.1.0 # For vibration feedback
   shared_preferences: ^2.2.2 # For storing app settings
+  flutter_sound: ^9.28.0
 
 dev_dependencies:
   flutter_test:

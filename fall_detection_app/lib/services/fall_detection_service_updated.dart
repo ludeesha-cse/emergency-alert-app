@@ -339,9 +339,11 @@ Future<bool> onServiceStart(ServiceInstance service) async {
       service.invoke('update');
     } catch (e, stack) {
       // Log any errors to help with debugging
-      debugPrint('Error in background service timer: '
-          'Error: '
-          'Stack: $stack');
+      debugPrint(
+        'Error in background service timer: '
+        'Error: '
+        'Stack: $stack',
+      );
     }
   });
   return true;
