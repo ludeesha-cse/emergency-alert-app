@@ -7,7 +7,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:torch_light/torch_light.dart';
 import 'package:vibration/vibration.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
-import 'package:flutter_background_service_android/flutter_background_service_android.dart';
+
 import 'package:permission_handler/permission_handler.dart';
 
 import '../models/settings_model.dart';
@@ -52,18 +52,20 @@ class FallDetectionService {
   // Update the sensitivity of the fall detection algorithm
   Future<bool> updateSensitivity(double sensitivity) async {
     if (sensitivity < 0.0 || sensitivity > 1.0) {
-      debugPrint('Invalid sensitivity value: $sensitivity. Must be between 0.0 and 1.0');
+      debugPrint(
+        'Invalid sensitivity value: $sensitivity. Must be between 0.0 and 1.0',
+      );
       return false;
     }
-    
+
     // Update the local settings
     if (_settings != null) {
       _settings = _settings!.copyWith(fallDetectionSensitivity: sensitivity);
-      
+
       // Adjust the accelerometer threshold based on sensitivity
       // Higher sensitivity means lower threshold (detect more falls)
       _adjustThresholds(sensitivity);
-      
+
       debugPrint('Fall detection sensitivity updated to: $sensitivity');
     } else {
       // If settings not loaded, load them first
@@ -71,10 +73,10 @@ class FallDetectionService {
       _settings = _settings!.copyWith(fallDetectionSensitivity: sensitivity);
       _adjustThresholds(sensitivity);
     }
-    
+
     return true;
   }
-  
+
   // Adjust thresholds based on sensitivity
   void _adjustThresholds(double sensitivity) {
     // Adjust thresholds based on sensitivity (0.0-1.0)
@@ -83,7 +85,7 @@ class FallDetectionService {
     double newThreshold = 25.0 - (sensitivity * 10.0);
     // Don't let threshold go below 10.0 for safety
     if (newThreshold < 10.0) newThreshold = 10.0;
-    
+
     debugPrint('Adjusting accelerometer threshold to: $newThreshold');
   }
 
@@ -206,7 +208,7 @@ class FallDetectionService {
   // Start sensor subscriptions
   void _startSensorSubscriptions() {
     // Listen to accelerometer events
-    _accelerometerSubscription = accelerometerEvents.listen((
+    _accelerometerSubscription = accelerometerEventStream().listen((
       AccelerometerEvent event,
     ) {
       // Calculate magnitude of acceleration
@@ -217,10 +219,10 @@ class FallDetectionService {
         debugPrint('High acceleration detected');
         _checkForFall();
       }
-    });
-
-    // Listen to gyroscope events
-    _gyroscopeSubscription = gyroscopeEvents.listen((GyroscopeEvent event) {
+    }); // Listen to gyroscope events
+    _gyroscopeSubscription = gyroscopeEventStream().listen((
+      GyroscopeEvent event,
+    ) {
       // This would be used in conjunction with accelerometer data
       // to improve fall detection accuracy
     });
@@ -262,17 +264,59 @@ class FallDetectionService {
       await _vibratePhone();
     }
 
-    // Get location
+    // Get location immediately
     final position = await _getCurrentLocation();
 
+    // Show confirmation dialog and handle response
+    await _showFallConfirmationDialog(position, settings.emergencyMessage);
+  }
+
+  // Show fall confirmation dialog (this would be called through a callback to the UI)
+  Future<void> _showFallConfirmationDialog(
+    Position? position,
+    String customMessage,
+  ) async {
+    // This method would typically trigger a UI callback
+    // For now, we'll implement a timer-based approach
+
+    debugPrint('Fall confirmation dialog would show here');
+
+    // Wait for 30 seconds (simulating confirmation dialog timeout)
+    bool userCancelled = false;
+
+    // In a real implementation, this would be handled by the UI layer
+    Timer.periodic(const Duration(seconds: 1), (timer) async {
+      if (timer.tick >= 30) {
+        timer.cancel();
+        if (!userCancelled) {
+          await _proceedWithEmergencyResponse(position, customMessage);
+        }
+      }
+    });
+
+    // For demo purposes, we'll proceed immediately
+    // In production, this would wait for user input
+    await _proceedWithEmergencyResponse(position, customMessage);
+  }
+
+  // Proceed with emergency response after confirmation or timeout
+  Future<void> _proceedWithEmergencyResponse(
+    Position? position,
+    String customMessage,
+  ) async {
     // Send SMS if we have emergency contacts and a position
     if (_emergencyContacts.isNotEmpty && position != null) {
-      await _sendEmergencySMS(position, settings.emergencyMessage);
+      await _sendEmergencySMS(position, customMessage);
+      debugPrint('Emergency SMS sent to ${_emergencyContacts.length} contacts');
+    } else {
+      debugPrint('No emergency contacts or location available');
     }
 
-    // In a real app, we would wait for user confirmation or timeout
-    // before sending SMS. For now, we'll just log it.
-    debugPrint('Emergency SMS would be sent to contacts');
+    // Turn off flashlight after emergency response
+    await _toggleFlashlight(false);
+
+    // Stop alarm after emergency response
+    await _audioPlayer.stop();
   }
 
   // Send emergency SMS
@@ -280,7 +324,7 @@ class FallDetectionService {
     Position position,
     String customMessage,
   ) async {
-    final message = '$customMessage';
+    final message = customMessage;
 
     await SmsService.sendSms(
       recipients: _emergencyContacts,
@@ -291,9 +335,23 @@ class FallDetectionService {
 
   // Play alarm sound
   Future<void> _playAlarm() async {
-    // In a real app, you would use a real alarm sound from assets
-    await _audioPlayer.setSource(AssetSource('alarm.mp3'));
-    await _audioPlayer.resume();
+    try {
+      // Try to play the alarm sound from assets
+      await _audioPlayer.setSource(AssetSource('alarm.mp3'));
+      await _audioPlayer.resume();
+
+      // Set the alarm to repeat for better notification
+      await _audioPlayer.setReleaseMode(ReleaseMode.loop);
+
+      // Stop the alarm after 30 seconds to avoid infinite playing
+      Timer(const Duration(seconds: 30), () async {
+        await _audioPlayer.stop();
+      });
+    } catch (e) {
+      debugPrint('Error playing alarm sound: $e');
+      // Fallback: Use vibration pattern if audio fails
+      await _vibratePhone();
+    }
   }
 
   // Toggle flashlight
@@ -327,6 +385,14 @@ class FallDetectionService {
       debugPrint('Error getting location');
       return null;
     }
+  }
+
+  // Set sensor sampling rate for battery optimization
+  void setSamplingRate(double samplingRateMs) {
+    debugPrint('Setting sensor sampling rate to: ${samplingRateMs}ms');
+    // Note: sensors_plus doesn't support changing sampling rate directly
+    // This method is here for UI consistency and future implementation
+    // In a real app, you might adjust the processing frequency instead
   }
 }
 
