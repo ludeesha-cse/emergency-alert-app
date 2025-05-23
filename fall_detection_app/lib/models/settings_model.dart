@@ -101,4 +101,18 @@ class EmergencyContact {
       phoneNumber: json['phoneNumber'] ?? '',
     );
   }
+
+  // Implement equality and hashCode for proper comparison
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is EmergencyContact && other.phoneNumber == phoneNumber;
+  }
+
+  @override
+  int get hashCode => phoneNumber.hashCode;
+
+  @override
+  String toString() =>
+      'EmergencyContact(name: $name, phoneNumber: $phoneNumber)';
 }

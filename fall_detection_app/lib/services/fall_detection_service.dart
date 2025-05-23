@@ -12,7 +12,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../models/settings_model.dart';
 import 'settings_service.dart';
-import 'sms_service.dart';
+import 'emergency_alert_service.dart';
 
 class FallDetectionService {
   // Singleton instance
@@ -27,10 +27,6 @@ class FallDetectionService {
 
   // Audio player for alarm
   final AudioPlayer _audioPlayer = AudioPlayer();
-
-  // Emergency contacts
-  final List<String> _emergencyContacts = [];
-
   // Thresholds for detection
   final double _accelerometerThreshold =
       20.0; // A typical threshold for fall detection
@@ -42,12 +38,17 @@ class FallDetectionService {
   bool _isRunning = false;
 
   // Settings
-  AppSettings? _settings;
-
-  // Getters
+  AppSettings? _settings; // Getters
   bool get isRunning => _isRunning;
-  List<String> get emergencyContacts => List.unmodifiable(_emergencyContacts);
   AppSettings? get settings => _settings;
+
+  // Get emergency contacts from EmergencyAlertService
+  // This ensures backward compatibility with existing code
+  List<String> get emergencyContacts {
+    // Return contacts as phone numbers for compatibility
+    final contacts = _settings?.emergencyContacts ?? [];
+    return contacts.map((contact) => contact.phoneNumber).toList();
+  }
 
   // Update the sensitivity of the fall detection algorithm
   Future<bool> updateSensitivity(double sensitivity) async {
@@ -100,6 +101,10 @@ class FallDetectionService {
 
     // Initialize settings
     _settings = await SettingsService.getSettings();
+
+    // Initialize the emergency alert service
+    final emergencyService = EmergencyAlertService();
+    await emergencyService.initialize();
 
     // Use settings for configuring the service
     if (_settings != null) {
@@ -192,18 +197,7 @@ class FallDetectionService {
     _isRunning = false;
     debugPrint('Service stopped');
   }
-
-  // Add emergency contact
-  void addEmergencyContact(String phoneNumber) {
-    if (!_emergencyContacts.contains(phoneNumber)) {
-      _emergencyContacts.add(phoneNumber);
-    }
-  }
-
-  // Remove emergency contact
-  void removeEmergencyContact(String phoneNumber) {
-    _emergencyContacts.remove(phoneNumber);
-  }
+  // Emergency contacts are now managed by EmergencyAlertService
 
   // Start sensor subscriptions
   void _startSensorSubscriptions() {
@@ -304,12 +298,18 @@ class FallDetectionService {
     Position? position,
     String customMessage,
   ) async {
-    // Send SMS if we have emergency contacts and a position
-    if (_emergencyContacts.isNotEmpty && position != null) {
-      await _sendEmergencySMS(position, customMessage);
-      debugPrint('Emergency SMS sent to ${_emergencyContacts.length} contacts');
+    // Use the EmergencyAlertService to send alerts
+    final emergencyService = EmergencyAlertService();
+
+    // Send SMS with custom message if available
+    final success = await emergencyService.sendEmergencyAlerts(
+      customMessage: customMessage,
+    );
+
+    if (success) {
+      debugPrint('Emergency SMS sent successfully');
     } else {
-      debugPrint('No emergency contacts or location available');
+      debugPrint('Failed to send emergency SMS or no contacts configured');
     }
 
     // Turn off flashlight after emergency response
@@ -318,20 +318,7 @@ class FallDetectionService {
     // Stop alarm after emergency response
     await _audioPlayer.stop();
   }
-
-  // Send emergency SMS
-  Future<void> _sendEmergencySMS(
-    Position position,
-    String customMessage,
-  ) async {
-    final message = customMessage;
-
-    await SmsService.sendSms(
-      recipients: _emergencyContacts,
-      message: message,
-      position: position,
-    );
-  }
+  // This method has been replaced by EmergencyAlertService.sendEmergencyAlerts
 
   // Play alarm sound
   Future<void> _playAlarm() async {

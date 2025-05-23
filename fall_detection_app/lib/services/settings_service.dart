@@ -41,11 +41,17 @@ class SettingsService {
       final prefs = await SharedPreferences.getInstance();
       final settingsJson = json.encode(settings.toJson());
 
+      debugPrint('Saving settings to SharedPreferences');
+      debugPrint('Contacts count: ${settings.emergencyContacts.length}');
+      debugPrint('Settings JSON: $settingsJson');
+
       // Update cache
       _cachedSettings = settings;
 
       // Save to storage
-      return await prefs.setString(_settingsKey, settingsJson);
+      final result = await prefs.setString(_settingsKey, settingsJson);
+      debugPrint('SharedPreferences save result: $result');
+      return result;
     } catch (e) {
       debugPrint('Error saving settings: $e');
       return false;
@@ -68,9 +74,20 @@ class SettingsService {
 
   // Remove an emergency contact
   static Future<bool> removeEmergencyContact(String phoneNumber) async {
+    debugPrint('Removing contact with phone number: $phoneNumber');
     final settings = await getSettings();
+    debugPrint(
+      'Before removal - contacts count: ${settings.emergencyContacts.length}',
+    );
+
     final contacts = List<EmergencyContact>.from(settings.emergencyContacts);
+    int beforeCount = contacts.length;
     contacts.removeWhere((contact) => contact.phoneNumber == phoneNumber);
+    int afterCount = contacts.length;
+
+    debugPrint('Contacts removed: ${beforeCount - afterCount}');
+    debugPrint('After removal - contacts count: $afterCount');
+
     return saveSettings(settings.copyWith(emergencyContacts: contacts));
   }
 

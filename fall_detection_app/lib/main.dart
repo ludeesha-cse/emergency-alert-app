@@ -5,8 +5,9 @@ import 'package:geolocator/geolocator.dart';
 
 import 'services/fall_detection_service_updated.dart';
 import 'services/location_service.dart';
+import 'services/emergency_alert_service.dart';
 import 'screens/settings_screen.dart';
-import 'screens/contacts_screen.dart';
+import 'screens/emergency_contacts_screen.dart';
 import 'screens/fall_alert_screen.dart';
 import 'screens/permission_screen.dart';
 
@@ -21,6 +22,11 @@ void main() async {
   final locationService = await LocationService.initialize();
   await locationService.initializeBackgroundService();
   await locationService.startLocationUpdates();
+
+  // Initialize emergency alert service
+  final emergencyAlertService = EmergencyAlertService();
+  await emergencyAlertService.initialize();
+  debugPrint('EmergencyAlertService initialized');
 
   runApp(const MyApp());
 }
@@ -294,9 +300,9 @@ class _MyHomePageState extends State<MyHomePage> {
 
   // Navigate to contacts screen
   void _openContacts() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (context) => const ContactsScreen()));
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (context) => const EmergencyContactsScreen()),
+    );
   }
 
   // Toggle background mode
