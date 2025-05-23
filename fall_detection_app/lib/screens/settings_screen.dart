@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/settings_model.dart';
 import '../services/settings_service.dart';
 import '../services/fall_detection_service.dart';
+import '../services/local_alert_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -25,9 +26,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // Text editing controller for emergency message
   late TextEditingController _messageController;
-
   // Services
   final _fallDetectionService = FallDetectionService();
+  final _localAlertService = LocalAlertService();
 
   @override
   void initState() {
@@ -68,10 +69,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
       emergencyMessage: _messageController.text,
     );
 
+    // Save settings through SettingsService
     await SettingsService.saveSettings(updatedSettings);
 
     // Update fall detection service sensitivity
     await _fallDetectionService.updateSensitivity(_sensitivity);
+
+    // Update alert settings in LocalAlertService
+    await _localAlertService.updateAlertSettings(
+      vibrateOnFall: _vibrate,
+      playAlarmOnFall: _playAlarm,
+      flashLightOnFall: _flashLight,
+    );
 
     // Show confirmation
     if (mounted) {
@@ -194,7 +203,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
 
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 32), // Test Alert button
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.notifications_active),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      onPressed: _testLocalAlerts,
+                      label: const Text('TEST ALERTS'),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
 
                   // Save button
                   SizedBox(
@@ -223,6 +245,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return 'Medium';
     } else {
       return 'High';
+    }
+  }
+
+  // Test local alerts with current settings
+  Future<void> _testLocalAlerts() async {
+    // Apply current settings before testing
+    await _localAlertService.updateAlertSettings(
+      vibrateOnFall: _vibrate,
+      playAlarmOnFall: _playAlarm,
+      flashLightOnFall: _flashLight,
+    );
+
+    // Start alerts
+    await _localAlertService.startAlerts();
+
+    // Show dialog with stop button
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Testing Alerts'),
+          content: const Text(
+            'Local alerts are running with your current settings.\n\n'
+            'The alerts will automatically stop after 30 seconds to conserve battery.',
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () {
+                _localAlertService.stopAllAlerts();
+                Navigator.of(context).pop();
+              },
+              child: const Text('STOP ALERTS'),
+            ),
+          ],
+        ),
+      );
     }
   }
 }

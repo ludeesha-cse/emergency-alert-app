@@ -3,9 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:audioplayers/audioplayers.dart';
-import 'package:torch_light/torch_light.dart';
-import 'package:vibration/vibration.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 
 import 'package:permission_handler/permission_handler.dart';
@@ -13,6 +10,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../models/settings_model.dart';
 import 'settings_service.dart';
 import 'emergency_alert_service.dart';
+import 'local_alert_service.dart';
 
 class FallDetectionService {
   // Singleton instance
@@ -23,10 +21,9 @@ class FallDetectionService {
 
   // Streams
   StreamSubscription<AccelerometerEvent>? _accelerometerSubscription;
-  StreamSubscription<GyroscopeEvent>? _gyroscopeSubscription;
-
-  // Audio player for alarm
-  final AudioPlayer _audioPlayer = AudioPlayer();
+  StreamSubscription<GyroscopeEvent>?
+  _gyroscopeSubscription; // Local alert service for handling all local alerts
+  late LocalAlertService _localAlertService;
   // Thresholds for detection
   final double _accelerometerThreshold =
       20.0; // A typical threshold for fall detection
@@ -97,14 +94,16 @@ class FallDetectionService {
     if (!status) {
       debugPrint('Permissions not granted.');
       return false;
-    }
-
-    // Initialize settings
+    } // Initialize settings
     _settings = await SettingsService.getSettings();
 
     // Initialize the emergency alert service
     final emergencyService = EmergencyAlertService();
     await emergencyService.initialize();
+
+    // Initialize the local alert service
+    _localAlertService = LocalAlertService();
+    await _localAlertService.initialize();
 
     // Use settings for configuring the service
     if (_settings != null) {
@@ -243,20 +242,9 @@ class FallDetectionService {
     // Use settings to determine what actions to take
     final settings = _settings ?? AppSettings();
 
-    // Sound alarm if enabled
-    if (settings.playAlarmOnFall) {
-      await _playAlarm();
-    }
-
-    // Flash light if enabled
-    if (settings.flashLightOnFall) {
-      await _toggleFlashlight(true);
-    }
-
-    // Vibrate phone if enabled
-    if (settings.vibrateOnFall) {
-      await _vibratePhone();
-    }
+    // Use LocalAlertService to handle all local alerts (sound, vibration, flashlight)
+    // The service checks settings internally to determine which alerts to trigger
+    await _localAlertService.startAlerts();
 
     // Get location immediately
     final position = await _getCurrentLocation();
@@ -293,12 +281,25 @@ class FallDetectionService {
     await _proceedWithEmergencyResponse(position, customMessage);
   }
 
+  /// Cancel alerts if the user indicates it was a false alarm
+  Future<void> cancelFallAlert() async {
+    // Cancel local alerts
+    await _localAlertService.stopAllAlerts();
+
+    // Cancel any emergency alerts in progress
+    final emergencyService = EmergencyAlertService();
+    await emergencyService.cancelEmergencyAlerts();
+
+    debugPrint('Fall alert cancelled by user');
+  }
+
   // Proceed with emergency response after confirmation or timeout
   Future<void> _proceedWithEmergencyResponse(
     Position? position,
     String customMessage,
   ) async {
     // Use the EmergencyAlertService to send alerts
+    // Note: The EmergencyAlertService already starts local alerts as well
     final emergencyService = EmergencyAlertService();
 
     // Send SMS with custom message if available
@@ -312,55 +313,12 @@ class FallDetectionService {
       debugPrint('Failed to send emergency SMS or no contacts configured');
     }
 
-    // Turn off flashlight after emergency response
-    await _toggleFlashlight(false);
-
-    // Stop alarm after emergency response
-    await _audioPlayer.stop();
+    // Stop all local alerts (vibration, alarm, flashlight)
+    await _localAlertService.stopAllAlerts();
   }
   // This method has been replaced by EmergencyAlertService.sendEmergencyAlerts
-
-  // Play alarm sound
-  Future<void> _playAlarm() async {
-    try {
-      // Try to play the alarm sound from assets
-      await _audioPlayer.setSource(AssetSource('alarm.mp3'));
-      await _audioPlayer.resume();
-
-      // Set the alarm to repeat for better notification
-      await _audioPlayer.setReleaseMode(ReleaseMode.loop);
-
-      // Stop the alarm after 30 seconds to avoid infinite playing
-      Timer(const Duration(seconds: 30), () async {
-        await _audioPlayer.stop();
-      });
-    } catch (e) {
-      debugPrint('Error playing alarm sound: $e');
-      // Fallback: Use vibration pattern if audio fails
-      await _vibratePhone();
-    }
-  }
-
-  // Toggle flashlight
-  Future<void> _toggleFlashlight(bool enable) async {
-    try {
-      if (enable) {
-        await TorchLight.enableTorch();
-      } else {
-        await TorchLight.disableTorch();
-      }
-    } catch (e) {
-      debugPrint('Error controlling flashlight');
-    }
-  }
-
-  // Vibrate the phone
-  Future<void> _vibratePhone() async {
-    if (await Vibration.hasVibrator() == true) {
-      // Vibrate with a pattern for better notification
-      await Vibration.vibrate(pattern: [500, 1000, 500, 2000]);
-    }
-  }
+  // Note: These methods have been moved to LocalAlertService
+  // to centralize alert management and optimize battery usage
 
   // Get current location
   Future<Position?> _getCurrentLocation() async {
@@ -380,6 +338,19 @@ class FallDetectionService {
     // Note: sensors_plus doesn't support changing sampling rate directly
     // This method is here for UI consistency and future implementation
     // In a real app, you might adjust the processing frequency instead
+  }
+
+  /// Test the alert system without actually detecting a fall
+  /// This is useful for testing and debugging
+  Future<void> testAlertSystem() async {
+    debugPrint('Testing alert system');
+    await _localAlertService.startAlerts();
+
+    // Set a timer to stop all alerts after 5 seconds to avoid disruption
+    Timer(const Duration(seconds: 5), () async {
+      await _localAlertService.stopAllAlerts();
+      debugPrint('Test alert stopped after 5 seconds');
+    });
   }
 }
 

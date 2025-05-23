@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'services/fall_detection_service_updated.dart';
 import 'services/location_service.dart';
 import 'services/emergency_alert_service.dart';
+import 'services/local_alert_service.dart';
 import 'screens/settings_screen.dart';
 import 'screens/emergency_contacts_screen.dart';
 import 'screens/fall_alert_screen.dart';
@@ -28,6 +29,10 @@ void main() async {
   await emergencyAlertService.initialize();
   debugPrint('EmergencyAlertService initialized');
 
+  // Initialize local alert service
+  final localAlertService = LocalAlertService();
+  await localAlertService.initialize();
+  debugPrint('LocalAlertService initialized');
   runApp(const MyApp());
 }
 

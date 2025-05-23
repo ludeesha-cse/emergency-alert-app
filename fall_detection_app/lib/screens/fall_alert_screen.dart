@@ -2,9 +2,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import '../services/sms_service.dart';
 import '../services/settings_service.dart';
-import '../services/location_service.dart';
+import '../services/emergency_alert_service.dart';
+import '../services/local_alert_service.dart';
 import '../models/settings_model.dart';
 
 class FallAlertScreen extends StatefulWidget {
@@ -26,7 +26,9 @@ class _FallAlertScreenState extends State<FallAlertScreen> {
 
   // App settings
   AppSettings? _settings;
-
+  // Alert services
+  final _emergencyAlertService = EmergencyAlertService();
+  final _localAlertService = LocalAlertService();
   @override
   void initState() {
     super.initState();
@@ -34,13 +36,24 @@ class _FallAlertScreenState extends State<FallAlertScreen> {
     // Load settings
     _loadSettings();
 
+    // Initialize services
+    _initializeServices();
+
     // Start countdown timer
     _startCountdown();
+  }
+
+  // Initialize alert services
+  Future<void> _initializeServices() async {
+    await _localAlertService.initialize();
+    await _emergencyAlertService.initialize();
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    // Ensure alerts are stopped when screen is closed
+    _localAlertService.stopAllAlerts();
     super.dispose();
   }
 
@@ -69,55 +82,15 @@ class _FallAlertScreenState extends State<FallAlertScreen> {
     });
   }
 
-  // Send emergency SMS to all contacts
+  // Send emergency alerts (SMS and local device alerts)
   Future<void> _sendEmergencySMS() async {
     if (_settings == null) {
       await _loadSettings();
     }
 
-    // Try to get location from LocationService if not provided
-    var currentPosition = widget.currentPosition;
-    if (currentPosition == null) {
-      try {
-        final locationService = await LocationService.initialize();
-        currentPosition = await locationService.getCurrentLocation();
-        if (currentPosition == null) {
-          // Try to get last known location as fallback
-          currentPosition = await locationService.getLastKnownLocation();
-        }
-      } catch (e) {
-        debugPrint('Error getting position: $e');
-      }
-    }
-
-    final contacts = _settings?.emergencyContacts ?? [];
-    if (contacts.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No emergency contacts found')),
-        );
-      }
-      return;
-    }
-
-    // Get message with location if available
-    final baseMessage =
-        _settings?.emergencyMessage ?? "I've fallen and need assistance.";
-    final smsMessage = currentPosition != null
-        ? "$baseMessage\nLocation: ${currentPosition.latitude}, ${currentPosition.longitude}"
-        : baseMessage;
-
-    // Send SMS to all contacts
-    final List<String> phoneNumbers = [];
-    for (var contact in contacts) {
-      phoneNumbers.add(contact.phoneNumber);
-    }
-
-    final sendResult = await SmsService.sendSms(
-      recipients: phoneNumbers,
-      message: smsMessage,
-      position: currentPosition,
-    );
+    // Use EmergencyAlertService to handle all alert types
+    // This will trigger both SMS notifications and local device alerts (sound, vibration, flashlight)
+    final sendResult = await _emergencyAlertService.sendEmergencyAlerts();
 
     setState(() {
       _smsSent = sendResult;
@@ -129,9 +102,9 @@ class _FallAlertScreenState extends State<FallAlertScreen> {
           content: Text(
             sendResult
                 ? 'Emergency alert sent'
-                : 'Failed to send emergency alert',
+                : 'Could not send SMS alerts, but local alerts are active',
           ),
-          backgroundColor: sendResult ? Colors.green : Colors.red,
+          backgroundColor: sendResult ? Colors.green : Colors.orange,
         ),
       );
     }
@@ -140,6 +113,11 @@ class _FallAlertScreenState extends State<FallAlertScreen> {
   // Cancel the alert
   void _cancelAlert() {
     _timer?.cancel();
+
+    // Stop all local alerts since user indicates they're okay
+    _localAlertService.stopAllAlerts();
+    _emergencyAlertService.cancelEmergencyAlerts();
+
     Navigator.of(context).pop(false); // false = alert canceled
   }
 

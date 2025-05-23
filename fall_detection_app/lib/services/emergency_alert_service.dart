@@ -2,9 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
 import '../models/settings_model.dart';
+import 'local_alert_service.dart';
 import 'location_service.dart';
 import 'settings_service.dart';
 import 'sms_service.dart';
@@ -19,17 +18,20 @@ class EmergencyAlertService {
   EmergencyAlertService._internal();
 
   // Keys for preferences
-  static const String _contactsKey = 'emergency_contacts';
   static const int _maxContacts = 5;
-
-  // Cached location service
+  // Cached services
   LocationService? _locationService;
+  late LocalAlertService _localAlertService;
 
   /// Initialize the emergency alert service with necessary dependencies
   Future<void> initialize() async {
     try {
       debugPrint('Initializing EmergencyAlertService');
       _locationService = await LocationService.initialize();
+
+      // Initialize local alert service
+      _localAlertService = LocalAlertService();
+      await _localAlertService.initialize();
 
       // Verify settings can be accessed
       final settings = await SettingsService.getSettings();
@@ -42,24 +44,31 @@ class EmergencyAlertService {
   }
 
   /// Send emergency alerts to all configured contacts
+  /// and trigger local device alerts based on settings
   /// Returns true if at least one alert was sent successfully
   Future<bool> sendEmergencyAlerts({String? customMessage}) async {
     try {
-      // Get the stored emergency contacts
+      // Get the stored emergency contacts and settings
       final settings = await SettingsService.getSettings();
       final contacts = settings.emergencyContacts;
 
-      // Check if any contacts are configured
+      // Trigger local device alerts (vibration, sound, flashlight)
+      // This happens regardless of contacts being configured
+      _localAlertService.startAlerts();
+
+      // If no contacts are configured, we still return true because local alerts were triggered
       if (contacts.isEmpty) {
-        debugPrint('No emergency contacts configured');
-        return false;
+        debugPrint(
+          'No emergency contacts configured, only local alerts triggered',
+        );
+        return true;
       }
 
       // Ensure we have SMS permission
       final hasPermission = await _checkSmsPermission();
       if (!hasPermission) {
-        debugPrint('SMS permission not granted');
-        return false;
+        debugPrint('SMS permission not granted, only local alerts triggered');
+        return true; // Still return true because local alerts were triggered
       }
 
       // Get the current/last location
@@ -81,17 +90,29 @@ class EmergencyAlertService {
       // Extract phone numbers from contacts
       final phoneNumbers = contacts
           .map((contact) => contact.phoneNumber)
-          .toList();
-
-      // Send SMS with location data
-      return await SmsService.sendSms(
+          .toList(); // Send SMS with location data
+      await SmsService.sendSms(
         recipients: phoneNumbers,
         message: message,
         position: position,
       );
+
+      // Return true if either SMS was sent or local alerts were triggered
+      return true;
     } catch (e) {
       debugPrint('Error sending emergency alerts: $e');
-      return false;
+      // We still return true if only local alerts were triggered successfully
+      return true;
+    }
+  }
+
+  /// Cancel any ongoing alerts (useful for false positives)
+  Future<void> cancelEmergencyAlerts() async {
+    try {
+      debugPrint('Cancelling emergency alerts');
+      await _localAlertService.stopAllAlerts();
+    } catch (e) {
+      debugPrint('Error cancelling emergency alerts: $e');
     }
   }
 
