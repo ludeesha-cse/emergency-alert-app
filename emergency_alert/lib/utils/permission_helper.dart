@@ -1,110 +1,99 @@
 import 'package:permission_handler/permission_handler.dart';
+import '../services/permission_service.dart';
 
+/// A utility class for handling permissions in the app
+/// Note: This class wraps the new PermissionService to maintain compatibility
+/// with existing code while we transition to the new service
 class PermissionHelper {
+  static PermissionService _getPermissionService() {
+    return PermissionService();
+  }
+
   static Future<bool> requestLocationPermissions() async {
-    final permissions = [
-      Permission.location,
-      Permission.locationWhenInUse,
-      Permission.locationAlways,
-    ];
+    final permissionService = _getPermissionService();
+    final locationGranted = await permissionService.requestLocationPermission();
 
-    Map<Permission, PermissionStatus> statuses = await permissions.request();
-
-    return statuses.values.every(
-      (status) =>
-          status == PermissionStatus.granted ||
-          status == PermissionStatus.limited,
-    );
+    // We'll return true if at least the basic location permission is granted
+    return locationGranted;
   }
 
   static Future<bool> requestSmsPermissions() async {
-    final permissions = [Permission.sms];
-
-    Map<Permission, PermissionStatus> statuses = await permissions.request();
-
-    return statuses.values.every(
-      (status) => status == PermissionStatus.granted,
-    );
+    final permissionService = _getPermissionService();
+    return await permissionService.requestSmsPermission();
   }
 
   static Future<bool> requestAudioPermissions() async {
-    final permissions = [Permission.microphone];
-
-    Map<Permission, PermissionStatus> statuses = await permissions.request();
-
-    return statuses.values.every(
-      (status) => status == PermissionStatus.granted,
-    );
+    final permissionService = _getPermissionService();
+    return await permissionService.requestMicrophonePermission();
   }
 
   static Future<bool> requestCameraPermissions() async {
-    final permissions = [Permission.camera];
-
-    Map<Permission, PermissionStatus> statuses = await permissions.request();
-
-    return statuses.values.every(
-      (status) => status == PermissionStatus.granted,
-    );
+    // Camera permission is not handled by our new service, so we'll use the direct approach
+    final permissionStatus = await Permission.camera.request();
+    return permissionStatus == PermissionStatus.granted;
   }
 
   static Future<bool> requestPhonePermissions() async {
-    final permissions = [Permission.phone];
-
-    Map<Permission, PermissionStatus> statuses = await permissions.request();
-
-    return statuses.values.every(
-      (status) => status == PermissionStatus.granted,
-    );
+    // Phone permission is not handled by our new service, so we'll use the direct approach
+    final permissionStatus = await Permission.phone.request();
+    return permissionStatus == PermissionStatus.granted;
   }
 
   static Future<bool> requestStoragePermissions() async {
-    final permissions = [Permission.storage];
-
-    Map<Permission, PermissionStatus> statuses = await permissions.request();
-
-    return statuses.values.every(
-      (status) => status == PermissionStatus.granted,
-    );
+    // Storage permission is not handled by our new service, so we'll use the direct approach
+    final permissionStatus = await Permission.storage.request();
+    return permissionStatus == PermissionStatus.granted;
   }
 
   static Future<bool> requestNotificationPermissions() async {
-    final permissions = [Permission.notification];
-
-    Map<Permission, PermissionStatus> statuses = await permissions.request();
-
-    return statuses.values.every(
-      (status) => status == PermissionStatus.granted,
-    );
+    final permissionService = _getPermissionService();
+    return await permissionService.requestNotificationPermission();
   }
 
   static Future<bool> requestAllPermissions() async {
-    final results = await Future.wait([
-      requestLocationPermissions(),
-      requestSmsPermissions(),
-      requestAudioPermissions(),
-      requestCameraPermissions(),
-      requestPhonePermissions(),
-      requestStoragePermissions(),
-      requestNotificationPermissions(),
-    ]);
+    final permissionService = _getPermissionService();
 
-    return results.every((granted) => granted);
+    // Request all permissions managed by the permission service
+    final servicePermissions = await permissionService.requestAllPermissions();
+
+    // Request additional permissions not managed by the service
+    final cameraPermission = await requestCameraPermissions();
+    final phonePermission = await requestPhonePermissions();
+    final storagePermission = await requestStoragePermissions();
+
+    // Return true only if all permissions are granted
+    return servicePermissions &&
+        cameraPermission &&
+        phonePermission &&
+        storagePermission;
   }
 
   static Future<Map<String, bool>> checkAllPermissions() async {
+    final permissionService = _getPermissionService();
+    await permissionService.checkPermissionStatuses();
+
+    // Create a map of all permission statuses
     return {
-      'location': await Permission.location.isGranted,
-      'sms': await Permission.sms.isGranted,
-      'microphone': await Permission.microphone.isGranted,
+      'location': permissionService.isLocationGranted,
+      'backgroundLocation': permissionService.isBackgroundLocationGranted,
+      'sms': permissionService.isSmsGranted,
+      'microphone': permissionService.isMicrophoneGranted,
+      'sensors': permissionService.isSensorsGranted,
+      'notification': permissionService.isNotificationGranted,
       'camera': await Permission.camera.isGranted,
       'phone': await Permission.phone.isGranted,
       'storage': await Permission.storage.isGranted,
-      'notification': await Permission.notification.isGranted,
     };
   }
 
   static Future<bool> requestIgnoreBatteryOptimizations() async {
     return await Permission.ignoreBatteryOptimizations.request() ==
         PermissionStatus.granted;
+  }
+
+  /// Opens the app settings page so the user can grant permissions manually
+  static Future<bool> openAppSettings() async {
+    final permissionService = _getPermissionService();
+    return await permissionService.openSettings();
   }
 }

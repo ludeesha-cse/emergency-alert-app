@@ -4,6 +4,7 @@ import '../../services/location/location_service.dart';
 import '../../services/background/background_service.dart';
 import '../../utils/permission_helper.dart';
 import '../../models/sensor_data.dart';
+import '../screens/permission_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -34,22 +35,52 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _checkPermissions() async {
+    // Get permissions status
     final permissions = await PermissionHelper.checkAllPermissions();
+
+    // Check if all required permissions are granted
+    final requiredPermissions = [
+      'location',
+      'backgroundLocation',
+      'sms',
+      'microphone',
+      'notification',
+    ];
+
+    bool allRequired = true;
+    for (var permission in requiredPermissions) {
+      if (permissions.containsKey(permission) &&
+          permissions[permission] == false) {
+        allRequired = false;
+        break;
+      }
+    }
+
     setState(() {
-      _hasPermissions = permissions.values.every((granted) => granted);
+      _hasPermissions = allRequired;
     });
 
+    // Request permissions if not granted
     if (!_hasPermissions) {
       await _requestPermissions();
     }
   }
 
   Future<void> _requestPermissions() async {
-    final granted = await PermissionHelper.requestAllPermissions();
+    // Show the dedicated permission screen instead of modal dialogs
+    final granted =
+        await Navigator.push<bool>(
+          context,
+          MaterialPageRoute(builder: (context) => const PermissionScreen()),
+        ) ??
+        false;
+
+    // Update state based on result
     setState(() {
       _hasPermissions = granted;
     });
 
+    // If still not granted, show explanation dialog
     if (!granted) {
       _showPermissionDialog();
     }
@@ -62,12 +93,24 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('Permissions Required'),
         content: const Text(
           'This app requires various permissions to function properly. '
-          'Please grant all permissions in the app settings.',
+          'Without these permissions, some emergency features will not work correctly.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK'),
+            child: const Text('Not Now'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const PermissionScreen(),
+                ),
+              );
+            },
+            child: const Text('Review Permissions'),
           ),
         ],
       ),

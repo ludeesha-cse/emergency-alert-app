@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../utils/constants.dart';
+import 'permission_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -19,8 +20,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _backgroundServiceEnabled = true;
   bool _audioAlertsEnabled = true;
   bool _vibrationEnabled = true;
-  bool _flashlightEnabled = true;  double _fallThreshold = 2.5;
-  double _impactThreshold = 15.0; // Changed from 4.0 to be within valid range (10-50)
+  bool _flashlightEnabled = true;
+  double _fallThreshold = 2.5;
+  double _impactThreshold =
+      15.0; // Changed from 4.0 to be within valid range (10-50)
   int _alertDelaySeconds = 30;
   int _locationUpdateIntervalMinutes = 5;
 
@@ -44,8 +47,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _prefs.getBool('background_service_enabled') ?? true;
       _audioAlertsEnabled = _prefs.getBool('audio_alerts_enabled') ?? true;
       _vibrationEnabled = _prefs.getBool('vibration_enabled') ?? true;
-      _flashlightEnabled = _prefs.getBool('flashlight_enabled') ?? true;      _fallThreshold = _prefs.getDouble('fall_threshold') ?? 2.5;
-      _impactThreshold = _prefs.getDouble('impact_threshold') ?? 15.0; // Changed default to 15.0
+      _flashlightEnabled = _prefs.getBool('flashlight_enabled') ?? true;
+      _fallThreshold = _prefs.getDouble('fall_threshold') ?? 2.5;
+      _impactThreshold =
+          _prefs.getDouble('impact_threshold') ??
+          15.0; // Changed default to 15.0
       _alertDelaySeconds = _prefs.getInt('alert_delay_seconds') ?? 30;
       _locationUpdateIntervalMinutes =
           _prefs.getInt('location_update_interval') ?? 5;
@@ -205,6 +211,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
             (value) {
               setState(() => _locationUpdateIntervalMinutes = value.round());
               _saveSetting('location_update_interval', value.round());
+            },
+          ),
+          const Divider(height: 32),
+
+          // Permissions Section
+          _buildSectionHeader('App Permissions'),
+          ListTile(
+            leading: const Icon(Icons.security, color: Colors.blue),
+            title: const Text('Manage Permissions'),
+            subtitle: const Text(
+              'Review and grant app permissions for full functionality',
+            ),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const PermissionScreen(),
+                ),
+              );
             },
           ),
 

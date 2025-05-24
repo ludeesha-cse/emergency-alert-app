@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'services/permission_service.dart';
 import 'ui/screens/main_navigation_screen.dart';
 
 void main() async {
@@ -11,12 +13,26 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
 
-  runApp(const EmergencyAlertApp());
+  // Initialize permission service
+  final permissionService = PermissionService();
+  await permissionService.init();
+
+  runApp(
+    MultiProvider(
+      providers: [ChangeNotifierProvider.value(value: permissionService)],
+      child: const EmergencyAlertApp(),
+    ),
+  );
 }
 
-class EmergencyAlertApp extends StatelessWidget {
+class EmergencyAlertApp extends StatefulWidget {
   const EmergencyAlertApp({super.key});
 
+  @override
+  State<EmergencyAlertApp> createState() => _EmergencyAlertAppState();
+}
+
+class _EmergencyAlertAppState extends State<EmergencyAlertApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
