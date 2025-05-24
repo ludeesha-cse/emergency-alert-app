@@ -3,7 +3,7 @@ class AppConstants {
   static const double fallDetectionThreshold =
       2.5; // G-force threshold for fall detection
   static const double impactDetectionThreshold =
-      4.0; // G-force threshold for impact detection
+      15.0; // G-force threshold for impact detection (increased to reduce false positives)
   static const int sensorSamplingRate = 50; // Hz
   static const int sensorBufferSize =
       100; // Number of samples to keep in buffer
@@ -95,17 +95,22 @@ class AppConstants {
 class SensorConstants {
   // Accelerometer calibration values
   static const double earthGravity = 9.81; // m/s²
-  static const double accelerometerSensitivity =
-      0.01; // Minimum detectable change
+  static const int accelerometerSensitivity = 20; // Hz sampling rate
 
   // Gyroscope calibration values
   static const double gyroscopeSensitivity = 0.1; // degrees/second
   static const double maxGyroscopeValue = 2000.0; // degrees/second
+  static const int gyroscopeSamplingRate = 10; // Hz
 
   // Movement classification thresholds
   static const double walkingThreshold = 1.2;
   static const double runningThreshold = 2.0;
-  static const double stationaryThreshold = 0.1;
+  static const double stationaryThreshold = 0.3; // Increased to account for device noise
+  
+  // Impact detection improvements
+  static const double gravityCompensationThreshold = 5.0; // Minimum change to be considered movement
+  static const int impactCooldownMs = 2000; // Cooldown between impact detections
+  static const int impactConfirmationCount = 3; // Number of high readings needed to confirm impact
 
   // Fall detection algorithm parameters
   static const double freeFallThreshold = 0.5; // G-force

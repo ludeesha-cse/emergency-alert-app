@@ -143,7 +143,6 @@ class SmsService {
 
     return buffer.toString();
   }
-
   String _alertTypeToString(AlertType type) {
     switch (type) {
       case AlertType.fall:
@@ -158,7 +157,57 @@ class SmsService {
         return "Medical Emergency";
       case AlertType.custom:
         return "Custom Alert";
+      case AlertType.manual:
+        return "Manual Emergency";
+    }  }
+
+  Future<bool> sendCancellationMessage({
+    required List<EmergencyContact> contacts,
+    required Alert alert,
+  }) async {
+    try {
+      final hasPermission = await checkPermissions();
+      if (!hasPermission) {
+        print("SMS permissions not granted");
+        return false;
+      }
+
+      final message = _buildCancellationMessage(alert);
+
+      bool allSent = true;
+      for (final contact in contacts.where((c) => c.isEnabled)) {
+        try {
+          final url = Uri.parse("sms:${contact.phoneNumber}?body=${Uri.encodeComponent(message)}");
+          
+          if (await canLaunchUrl(url)) {
+            await launchUrl(url);
+          } else {
+            print("Could not launch SMS app for ${contact.name}");
+            allSent = false;
+          }
+        } catch (e) {
+          print("Error sending cancellation SMS to ${contact.name}: $e");
+          allSent = false;
+        }
+      }
+
+      return allSent;
+    } catch (e) {
+      print("Error sending cancellation SMS: $e");
+      return false;
     }
+  }
+
+  String _buildCancellationMessage(Alert alert) {
+    final buffer = StringBuffer();
+
+    buffer.writeln("ALERT CANCELLED");
+    buffer.writeln("Previous emergency alert for ${_alertTypeToString(alert.type)} has been cancelled.");
+    buffer.writeln("Time cancelled: ${DateTime.now().toString().substring(0, 19)}");
+    buffer.writeln("The person is safe and no longer needs assistance.");
+    buffer.writeln("Sent via Emergency Alert App");
+
+    return buffer.toString();
   }
 
   void dispose() {

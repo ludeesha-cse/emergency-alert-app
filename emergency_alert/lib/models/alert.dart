@@ -5,11 +5,12 @@ enum AlertType {
   inactivity,
   medicalEmergency,
   custom,
+  manual,
 }
 
 enum AlertSeverity { low, medium, high, critical }
 
-enum AlertStatus { triggered, sent, acknowledged, resolved, cancelled }
+enum AlertStatus { triggered, sent, acknowledged, resolved, cancelled, failed }
 
 class Alert {
   final String id;
@@ -111,7 +112,6 @@ class Alert {
       resolvedBy: resolvedBy ?? this.resolvedBy,
     );
   }
-
   String get alertTypeDescription {
     switch (type) {
       case AlertType.fall:
@@ -126,6 +126,8 @@ class Alert {
         return 'Medical Emergency';
       case AlertType.custom:
         return 'Custom Alert';
+      case AlertType.manual:
+        return 'Manual Emergency';
     }
   }
 

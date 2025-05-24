@@ -4,9 +4,11 @@ import '../../services/sensor/sensor_service.dart';
 import '../../services/location/location_service.dart';
 import '../../services/background/background_service.dart';
 import '../../services/permission_service.dart';
+import '../../services/emergency_response_service.dart';
 import '../../utils/permission_helper.dart';
 import '../../utils/permission_fallbacks.dart';
 import '../../models/sensor_data.dart';
+import '../../models/alert.dart';
 import '../screens/permission_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -20,6 +22,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final SensorService _sensorService = SensorService();
   final LocationService _locationService = LocationService();
   final BackgroundService _backgroundService = BackgroundService();
+  final EmergencyResponseService _emergencyService = EmergencyResponseService();
   bool _isMonitoring = false;
   bool _hasPermissions = false;
   bool _notificationsEnabled = false;
@@ -187,48 +190,60 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _currentLocation = location;
       });
-    });
-
-    // Listen to emergency alerts
+    });    // Listen to emergency alerts
     _sensorService.fallDetectedStream.listen((detected) {
       if (detected) {
+        _emergencyService.triggerEmergency(
+          alertType: AlertType.fall,
+          customMessage: 'Fall detected - user may need assistance',
+        );
         _showEmergencyAlert('Fall Detected');
       }
     });
 
     _sensorService.impactDetectedStream.listen((detected) {
       if (detected) {
+        _emergencyService.triggerEmergency(
+          alertType: AlertType.impact,
+          customMessage: 'High impact detected - possible accident',
+        );
         _showEmergencyAlert('Impact Detected');
       }
     });
   }
-
   void _showEmergencyAlert(String alertType) {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Text(alertType),
-        content: const Text(
-          'An emergency has been detected. Emergency contacts will be notified in 30 seconds. '
-          'Press Cancel if this is a false alarm.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              // TODO: Cancel emergency alert
-            },
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              // TODO: Send alert immediately
-            },
-            child: const Text('Send Now'),
-          ),
-        ],
+      builder: (context) => StreamBuilder<int>(
+        stream: _emergencyService.countdownStream,
+        builder: (context, snapshot) {
+          final remainingSeconds = snapshot.data ?? 30;
+          
+          return AlertDialog(
+            title: Text(alertType),
+            content: Text(
+              'An emergency has been detected. Emergency contacts will be notified in $remainingSeconds seconds. '
+              'Press Cancel if this is a false alarm.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  Navigator.of(context).pop();
+                  await _emergencyService.cancelEmergency();
+                },
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  Navigator.of(context).pop();
+                  await _emergencyService.sendEmergencyImmediately();
+                },
+                child: const Text('Send Now'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -476,11 +491,10 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
 
-            const SizedBox(height: 8),
-
-            // Panic Button
+            const SizedBox(height: 8),            // Panic Button
             ElevatedButton.icon(
-              onPressed: () {
+              onPressed: () async {
+                await _emergencyService.triggerManualEmergency();
                 _showEmergencyAlert('Panic Button Activated');
               },
               icon: const Icon(Icons.warning),

@@ -48,10 +48,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _audioAlertsEnabled = _prefs.getBool('audio_alerts_enabled') ?? true;
       _vibrationEnabled = _prefs.getBool('vibration_enabled') ?? true;
       _flashlightEnabled = _prefs.getBool('flashlight_enabled') ?? true;
-      _fallThreshold = _prefs.getDouble('fall_threshold') ?? 2.5;
-      _impactThreshold =
+      _fallThreshold = _prefs.getDouble('fall_threshold') ?? 2.5;      _impactThreshold =
           _prefs.getDouble('impact_threshold') ??
-          15.0; // Changed default to 15.0
+          15.0; // Updated default to match new constants
       _alertDelaySeconds = _prefs.getInt('alert_delay_seconds') ?? 30;
       _locationUpdateIntervalMinutes =
           _prefs.getInt('location_update_interval') ?? 5;

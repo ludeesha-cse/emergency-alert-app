@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../models/alert.dart';
+import '../../services/alert_storage_service.dart';
 
 class AlertHistoryScreen extends StatefulWidget {
   const AlertHistoryScreen({super.key});
@@ -18,19 +19,31 @@ class _AlertHistoryScreenState extends State<AlertHistoryScreen> {
   void initState() {
     super.initState();
     _loadAlerts();
-  }
-
-  Future<void> _loadAlerts() async {
+  }  Future<void> _loadAlerts() async {
     setState(() => _isLoading = true);
 
-    // TODO: Load alerts from database
-    // For now, create sample data
-    await Future.delayed(const Duration(milliseconds: 500));
-
-    setState(() {
-      _alerts = sampleAlerts;
-      _isLoading = false;
-    });
+    try {
+      final alertStorage = AlertStorageService();
+      final alerts = await alertStorage.loadAlerts();
+      
+      setState(() {
+        _alerts = alerts;
+        
+        // If no alerts were found from storage, use sample alerts for demo purposes
+        if (_alerts.isEmpty) {
+          _alerts = sampleAlerts;
+        }
+        
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading alerts: $e');
+      setState(() {
+        // Fall back to sample alerts on error
+        _alerts = sampleAlerts;
+        _isLoading = false;
+      });
+    }
   }
 
   List<Alert> get sampleAlerts => [
@@ -114,8 +127,7 @@ class _AlertHistoryScreenState extends State<AlertHistoryScreen> {
             icon: const Icon(Icons.filter_list),
             onSelected: (value) {
               setState(() => _filterType = value);
-            },
-            itemBuilder: (context) => [
+            },            itemBuilder: (context) => [
               const PopupMenuItem(value: 'All', child: Text('All Alerts')),
               const PopupMenuItem(value: 'fall', child: Text('Fall Detection')),
               const PopupMenuItem(
@@ -125,6 +137,10 @@ class _AlertHistoryScreenState extends State<AlertHistoryScreen> {
               const PopupMenuItem(
                 value: 'panicButton',
                 child: Text('Panic Button'),
+              ),
+              const PopupMenuItem(
+                value: 'manual',
+                child: Text('Manual Emergency'),
               ),
               const PopupMenuItem(
                 value: 'inactivity',
@@ -264,9 +280,7 @@ class _AlertHistoryScreenState extends State<AlertHistoryScreen> {
         ),
       ),
     );
-  }
-
-  Widget _buildAlertIcon(AlertType type) {
+  }  Widget _buildAlertIcon(AlertType type) {
     IconData icon;
     Color color;
 
@@ -281,6 +295,10 @@ class _AlertHistoryScreenState extends State<AlertHistoryScreen> {
         break;
       case AlertType.panicButton:
         icon = Icons.emergency;
+        color = Colors.red;
+        break;
+      case AlertType.manual:
+        icon = Icons.touch_app;
         color = Colors.red;
         break;
       case AlertType.inactivity:
@@ -300,13 +318,12 @@ class _AlertHistoryScreenState extends State<AlertHistoryScreen> {
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
+        color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Icon(icon, color: color, size: 24),
     );
   }
-
   Widget _buildStatusChip(Alert alert) {
     bool isResolved = alert.status == AlertStatus.resolved;
     Color color = isResolved ? Colors.green : Colors.orange;
@@ -314,7 +331,7 @@ class _AlertHistoryScreenState extends State<AlertHistoryScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
+        color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
@@ -402,8 +419,7 @@ class _AlertHistoryScreenState extends State<AlertHistoryScreen> {
       ),
     );
   }
-
-  void _resolveAlert(Alert alert) {
+  void _resolveAlert(Alert alert) async {
     // Create a new alert with resolved status using copyWith
     final resolvedAlert = alert.copyWith(
       status: AlertStatus.resolved,
@@ -417,10 +433,19 @@ class _AlertHistoryScreenState extends State<AlertHistoryScreen> {
       }
     });
 
-    // TODO: Update alert in database
-
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Alert marked as resolved')));
+    // Update alert in storage
+    try {
+      final alertStorage = AlertStorageService();
+      await alertStorage.updateAlert(resolvedAlert);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Alert marked as resolved'))
+      );
+    } catch (e) {
+      print('Error updating alert: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to update alert'))
+      );
+    }
   }
 }

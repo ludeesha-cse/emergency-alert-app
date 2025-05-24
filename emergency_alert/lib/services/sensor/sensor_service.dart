@@ -22,11 +22,16 @@ class SensorService {
   Stream<SensorData> get sensorDataStream => _sensorDataController.stream;
   Stream<bool> get fallDetectedStream => _fallDetectedController.stream;
   Stream<bool> get impactDetectedStream => _impactDetectedController.stream;
-
   AccelerometerEvent? _lastAccelerometerEvent;
   GyroscopeEvent? _lastGyroscopeEvent;
   final List<double> _accelerometerMagnitudes = [];
   final List<DateTime> _impactTimestamps = [];
+  
+  // Additional variables for improved impact detection
+  double _baselineMagnitude = SensorConstants.earthGravity;
+  DateTime? _lastImpactTime;
+  int _consecutiveHighReadings = 0;
+  final List<double> _recentMagnitudes = [];
 
   bool _isMonitoring = false;
   bool _fallDetectionEnabled = true;
@@ -49,24 +54,24 @@ class SensorService {
 
     _isMonitoring = true;
 
-    // Start accelerometer monitoring
-    _accelerometerSubscription =
-        accelerometerEventStream(
-          samplingPeriod: Duration(
-            milliseconds: 1000 ~/ SensorConstants.accelerometerSensitivity,
-          ),
-        ).listen((AccelerometerEvent event) {
-          _lastAccelerometerEvent = event;
-          _processAccelerometerData(event);
-        });
+  // Start accelerometer monitoring
+  _accelerometerSubscription =
+      accelerometerEventStream(
+        samplingPeriod: Duration(
+          milliseconds: 1000 ~/ SensorConstants.accelerometerSensitivity,
+        ),
+      ).listen((AccelerometerEvent event) {
+        _lastAccelerometerEvent = event;
+        _processAccelerometerData(event);
+      });
 
-    // Start gyroscope monitoring
-    _gyroscopeSubscription =
-        gyroscopeEventStream(
-          samplingPeriod: Duration(
-            milliseconds: 1000 ~/ SensorConstants.gyroscopeSensitivity,
-          ),
-        ).listen((GyroscopeEvent event) {
+  // Start gyroscope monitoring
+  _gyroscopeSubscription =
+      gyroscopeEventStream(
+        samplingPeriod: Duration(
+          milliseconds: 1000 ~/ SensorConstants.gyroscopeSamplingRate,
+        ),
+      ).listen((GyroscopeEvent event) {
           _lastGyroscopeEvent = event;
           _processGyroscopeData(event);
         });
@@ -136,27 +141,71 @@ class SensorService {
         _fallDetectedController.add(true);
       }
     }
-  }
-
-  void _detectImpact(double magnitude) {
+  }  void _detectImpact(double magnitude) {
     final now = DateTime.now();
 
-    // Remove old impact timestamps (older than 1 second)
-    _impactTimestamps.removeWhere(
-      (timestamp) => now.difference(timestamp).inMilliseconds > 1000,
-    );
+    // Update recent magnitudes for baseline calculation
+    _recentMagnitudes.add(magnitude);
+    if (_recentMagnitudes.length > 20) {
+      _recentMagnitudes.removeAt(0);
+    }
 
-    // Check if current magnitude exceeds impact threshold
-    if (magnitude > AppConstants.impactDetectionThreshold) {
-      _impactTimestamps.add(now);
+    // Calculate baseline magnitude (moving average excluding outliers)
+    if (_recentMagnitudes.length >= 10) {
+      final sortedMagnitudes = [..._recentMagnitudes]..sort();
+      // Use median of middle 50% to exclude outliers
+      final startIndex = (sortedMagnitudes.length * 0.25).floor();
+      final endIndex = (sortedMagnitudes.length * 0.75).ceil();
+      final middleMagnitudes = sortedMagnitudes.sublist(startIndex, endIndex);
+      _baselineMagnitude = middleMagnitudes.reduce((a, b) => a + b) / middleMagnitudes.length;
+    }
 
-      // If multiple impacts in short time, trigger impact detection
-      if (_impactTimestamps.length >= 2) {
+    // Check for impact cooldown period
+    if (_lastImpactTime != null && 
+        now.difference(_lastImpactTime!).inMilliseconds < SensorConstants.impactCooldownMs) {
+      return;
+    }
+
+    // Calculate magnitude change from baseline
+    final magnitudeChange = (magnitude - _baselineMagnitude).abs();
+
+    // Additional check: ensure device is actually moving (check gyroscope)
+    bool isDeviceMoving = false;
+    if (_lastGyroscopeEvent != null) {
+      final gyroMagnitude = sqrt(
+        _lastGyroscopeEvent!.x * _lastGyroscopeEvent!.x +
+            _lastGyroscopeEvent!.y * _lastGyroscopeEvent!.y +
+            _lastGyroscopeEvent!.z * _lastGyroscopeEvent!.z,
+      );
+      isDeviceMoving = gyroMagnitude > SensorConstants.gyroscopeSensitivity;
+    }
+
+    // Check if magnitude change exceeds threshold AND device is moving
+    if (magnitudeChange > AppConstants.impactDetectionThreshold && isDeviceMoving) {
+      _consecutiveHighReadings++;
+      
+      // Require multiple consecutive high readings to confirm impact
+      if (_consecutiveHighReadings >= SensorConstants.impactConfirmationCount) {
+        // Remove old impact timestamps (older than 2 seconds)
+        _impactTimestamps.removeWhere(
+          (timestamp) => now.difference(timestamp).inMilliseconds > SensorConstants.impactCooldownMs,
+        );
+
+        _impactTimestamps.add(now);
+        _lastImpactTime = now;
+        _consecutiveHighReadings = 0;
+
+        // Trigger impact detection
+        print('Impact detected: magnitude=$magnitude, baseline=$_baselineMagnitude, change=$magnitudeChange');
         _impactDetectedController.add(true);
+      }
+    } else {
+      // Reset consecutive high readings if magnitude is normal
+      if (_consecutiveHighReadings > 0) {
+        _consecutiveHighReadings--;
       }
     }
   }
-
   Future<void> stopMonitoring() async {
     if (!_isMonitoring) return;
 
@@ -167,6 +216,13 @@ class SensorService {
 
     _accelerometerSubscription = null;
     _gyroscopeSubscription = null;
+
+    // Reset impact detection variables
+    _impactTimestamps.clear();
+    _recentMagnitudes.clear();
+    _lastImpactTime = null;
+    _consecutiveHighReadings = 0;
+    _baselineMagnitude = SensorConstants.earthGravity;
   }
 
   SensorData? getCurrentSensorData() {
@@ -191,11 +247,31 @@ class SensorService {
       magnitude: magnitude,
     );
   }
-
   void dispose() {
     stopMonitoring();
     _sensorDataController.close();
     _fallDetectedController.close();
     _impactDetectedController.close();
+  }
+
+  /// Calibrate the sensor baseline when device is stationary
+  void calibrateBaseline() {
+    if (_recentMagnitudes.length >= 5) {
+      _baselineMagnitude = _recentMagnitudes.reduce((a, b) => a + b) / _recentMagnitudes.length;
+      print('Baseline calibrated to: $_baselineMagnitude');
+    }
+  }
+
+  /// Get current acceleration magnitude relative to baseline
+  double getCurrentMagnitudeChange() {
+    if (_lastAccelerometerEvent == null) return 0.0;
+    
+    final magnitude = sqrt(
+      _lastAccelerometerEvent!.x * _lastAccelerometerEvent!.x +
+          _lastAccelerometerEvent!.y * _lastAccelerometerEvent!.y +
+          _lastAccelerometerEvent!.z * _lastAccelerometerEvent!.z,
+    );
+    
+    return (magnitude - _baselineMagnitude).abs();
   }
 }

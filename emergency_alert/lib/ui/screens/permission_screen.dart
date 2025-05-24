@@ -339,17 +339,22 @@ class _PermissionScreenState extends State<PermissionScreen> {
                 children: [
                   SizedBox(
                     width: double.infinity,
-                    child: ElevatedButton(                      onPressed: () async {
+                    child: ElevatedButton(
+                      onPressed: () async {
                         final granted = await permissionService
                             .requestNotificationPermission();
                         await _loadPermissionStatus();
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text(granted 
-                                ? 'Notification permission granted' 
-                                : 'Notification permission denied'),
-                              backgroundColor: granted ? Colors.green : Colors.orange,
+                              content: Text(
+                                granted
+                                    ? 'Notification permission granted'
+                                    : 'Notification permission denied',
+                              ),
+                              backgroundColor: granted
+                                  ? Colors.green
+                                  : Colors.orange,
                             ),
                           );
                         }
@@ -401,7 +406,8 @@ class _HeaderWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),      decoration: BoxDecoration(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
       ),

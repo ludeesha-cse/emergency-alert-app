@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/contact.dart';
 import '../../services/sms/sms_service.dart';
+import '../../services/contact_storage_service.dart';
 
 class ContactsScreen extends StatefulWidget {
   const ContactsScreen({super.key});
@@ -12,34 +13,64 @@ class ContactsScreen extends StatefulWidget {
 class _ContactsScreenState extends State<ContactsScreen> {
   final List<EmergencyContact> _contacts = [];
   final SmsService _smsService = SmsService();
+  final ContactStorageService _storageService = ContactStorageService();
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _loadContacts();
   }
-
   Future<void> _loadContacts() async {
-    // TODO: Load contacts from storage
-    // For now, showing sample data
     setState(() {
-      // Sample contacts for demonstration
+      _isLoading = true;
     });
-  }
 
+    try {
+      final contacts = await _storageService.loadContacts();
+      setState(() {
+        _contacts.clear();
+        _contacts.addAll(contacts);
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading contacts: $e');
+      setState(() {
+        _isLoading = false;
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to load contacts')),
+        );
+      }
+    }
+  }
   Future<void> _addContact() async {
     final result = await Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (context) => const AddContactScreen()));
 
     if (result != null && result is EmergencyContact) {
-      setState(() {
-        _contacts.add(result);
-      });
-      // TODO: Save contacts to storage
+      final success = await _storageService.addContact(result);
+      
+      if (success) {
+        await _loadContacts(); // Reload to get updated list
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Contact added successfully')),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to add contact')),
+          );
+        }
+      }
     }
   }
-
   Future<void> _editContact(EmergencyContact contact) async {
     final result = await Navigator.of(context).push(
       MaterialPageRoute(
@@ -48,13 +79,23 @@ class _ContactsScreenState extends State<ContactsScreen> {
     );
 
     if (result != null && result is EmergencyContact) {
-      setState(() {
-        final index = _contacts.indexWhere((c) => c.id == contact.id);
-        if (index != -1) {
-          _contacts[index] = result;
+      final success = await _storageService.updateContact(result);
+      
+      if (success) {
+        await _loadContacts(); // Reload to get updated list
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Contact updated successfully')),
+          );
         }
-      });
-      // TODO: Save contacts to storage
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to update contact')),
+          );
+        }
+      }
     }
   }
 
@@ -75,13 +116,24 @@ class _ContactsScreenState extends State<ContactsScreen> {
           ),
         ],
       ),
-    );
-
-    if (confirmed == true) {
-      setState(() {
-        _contacts.remove(contact);
-      });
-      // TODO: Save contacts to storage
+    );    if (confirmed == true) {
+      final success = await _storageService.removeContact(contact.id);
+      
+      if (success) {
+        await _loadContacts(); // Reload to get updated list
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Contact deleted successfully')),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to delete contact')),
+          );
+        }
+      }
     }
   }
 
@@ -119,7 +171,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
       }
     }
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -129,27 +180,38 @@ class _ContactsScreenState extends State<ContactsScreen> {
           IconButton(onPressed: _addContact, icon: const Icon(Icons.add)),
         ],
       ),
-      body: _contacts.isEmpty
+      body: _isLoading
           ? const Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.contacts, size: 64, color: Colors.grey),
+                  CircularProgressIndicator(),
                   SizedBox(height: 16),
-                  Text(
-                    'No Emergency Contacts',
-                    style: TextStyle(fontSize: 18, color: Colors.grey),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'Add contacts who will be notified in emergencies',
-                    style: TextStyle(color: Colors.grey),
-                    textAlign: TextAlign.center,
-                  ),
+                  Text('Loading contacts...'),
                 ],
               ),
             )
-          : ListView.builder(
+          : _contacts.isEmpty
+              ? const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.contacts, size: 64, color: Colors.grey),
+                      SizedBox(height: 16),
+                      Text(
+                        'No Emergency Contacts',
+                        style: TextStyle(fontSize: 18, color: Colors.grey),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'Add contacts who will be notified in emergencies',
+                        style: TextStyle(color: Colors.grey),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: _contacts.length,
               itemBuilder: (context, index) {
