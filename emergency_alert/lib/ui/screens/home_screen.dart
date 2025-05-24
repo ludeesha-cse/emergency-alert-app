@@ -5,6 +5,10 @@ import '../../services/location/location_service.dart';
 import '../../services/background/background_service.dart';
 import '../../services/permission_service.dart';
 import '../../services/emergency_response_service.dart';
+import '../../services/audio/audio_service.dart';
+import '../../services/flashlight/flashlight_service.dart';
+import '../../services/vibration/vibration_service.dart';
+import '../../services/logger/logger_service.dart';
 import '../../utils/permission_helper.dart';
 import '../../utils/permission_fallbacks.dart';
 import '../../models/sensor_data.dart';
@@ -26,6 +30,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isMonitoring = false;
   bool _hasPermissions = false;
   bool _notificationsEnabled = false;
+  bool _isEmergencyModalShowing = false;
   SensorData? _currentSensorData;
   LocationData? _currentLocation;
 
@@ -213,6 +218,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showEmergencyAlert(String alertType) {
+    // Prevent duplicate modals
+    if (_isEmergencyModalShowing) {
+      return;
+    }
+
+    _isEmergencyModalShowing = true;
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -231,13 +243,22 @@ class _HomeScreenState extends State<HomeScreen> {
               TextButton(
                 onPressed: () async {
                   Navigator.of(context).pop();
+                  _isEmergencyModalShowing = false;
                   await _emergencyService.cancelEmergency();
                 },
                 child: const Text('Cancel'),
               ),
+              TextButton(
+                onPressed: () async {
+                  await _stopLocalAlert();
+                },
+                style: TextButton.styleFrom(foregroundColor: Colors.orange),
+                child: const Text('Stop Local Alert'),
+              ),
               ElevatedButton(
                 onPressed: () async {
                   Navigator.of(context).pop();
+                  _isEmergencyModalShowing = false;
                   await _emergencyService.sendEmergencyImmediately();
                 },
                 child: const Text('Send Now'),
@@ -246,7 +267,39 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         },
       ),
-    );
+    ).then((_) {
+      // Ensure the flag is reset when dialog is dismissed
+      _isEmergencyModalShowing = false;
+    });
+  }
+
+  /// Stop local alert sounds, vibration, and flashlight without cancelling the emergency
+  Future<void> _stopLocalAlert() async {
+    try {
+      final audioService = AudioService();
+      final flashlightService = FlashlightService();
+      final vibrationService = VibrationService();
+
+      await Future.wait([
+        audioService.stopAlarm(),
+        flashlightService.stopFlashing(),
+        vibrationService.stopVibration(),
+      ]);
+
+      // Show confirmation snackbar
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Local alert stopped. Emergency countdown continues.',
+            ),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      LoggerService.error('Error stopping local alert: $e');
+    }
   }
 
   Future<void> _toggleMonitoring() async {
