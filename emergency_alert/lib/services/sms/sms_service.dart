@@ -3,7 +3,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../models/contact.dart';
 import '../../models/alert.dart';
-import '../../utils/constants.dart';
 
 class SmsService {
   static final SmsService _instance = SmsService._internal();
@@ -159,8 +158,6 @@ class SmsService {
         return "Medical Emergency";
       case AlertType.custom:
         return "Custom Alert";
-      default:
-        return "Emergency";
     }
   }
 

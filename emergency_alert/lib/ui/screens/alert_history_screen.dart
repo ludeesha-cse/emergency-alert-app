@@ -3,7 +3,7 @@ import 'package:intl/intl.dart';
 import '../../models/alert.dart';
 
 class AlertHistoryScreen extends StatefulWidget {
-  const AlertHistoryScreen({Key? key}) : super(key: key);
+  const AlertHistoryScreen({super.key});
 
   @override
   State<AlertHistoryScreen> createState() => _AlertHistoryScreenState();

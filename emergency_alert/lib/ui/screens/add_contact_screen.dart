@@ -5,7 +5,7 @@ import '../../models/contact.dart';
 class AddContactScreen extends StatefulWidget {
   final EmergencyContact? contact;
 
-  const AddContactScreen({Key? key, this.contact}) : super(key: key);
+  const AddContactScreen({super.key, this.contact});
 
   @override
   State<AddContactScreen> createState() => _AddContactScreenState();

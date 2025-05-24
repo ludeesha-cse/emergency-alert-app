@@ -3,7 +3,7 @@ import '../../models/contact.dart';
 import '../../services/sms/sms_service.dart';
 
 class ContactsScreen extends StatefulWidget {
-  const ContactsScreen({Key? key}) : super(key: key);
+  const ContactsScreen({super.key});
 
   @override
   State<ContactsScreen> createState() => _ContactsScreenState();
@@ -233,7 +233,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
 class AddContactScreen extends StatefulWidget {
   final EmergencyContact? contact;
 
-  const AddContactScreen({Key? key, this.contact}) : super(key: key);
+  const AddContactScreen({super.key, this.contact});
 
   @override
   State<AddContactScreen> createState() => _AddContactScreenState();
