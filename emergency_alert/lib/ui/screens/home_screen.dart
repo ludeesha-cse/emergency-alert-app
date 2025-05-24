@@ -190,7 +190,7 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _currentLocation = location;
       });
-    });    // Listen to emergency alerts
+    }); // Listen to emergency alerts
     _sensorService.fallDetectedStream.listen((detected) {
       if (detected) {
         _emergencyService.triggerEmergency(
@@ -211,6 +211,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     });
   }
+
   void _showEmergencyAlert(String alertType) {
     showDialog(
       context: context,
@@ -219,7 +220,7 @@ class _HomeScreenState extends State<HomeScreen> {
         stream: _emergencyService.countdownStream,
         builder: (context, snapshot) {
           final remainingSeconds = snapshot.data ?? 30;
-          
+
           return AlertDialog(
             title: Text(alertType),
             content: Text(
@@ -491,7 +492,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
 
-            const SizedBox(height: 8),            // Panic Button
+            const SizedBox(height: 8), // Panic Button
             ElevatedButton.icon(
               onPressed: () async {
                 await _emergencyService.triggerManualEmergency();

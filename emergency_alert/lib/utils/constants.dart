@@ -105,12 +105,16 @@ class SensorConstants {
   // Movement classification thresholds
   static const double walkingThreshold = 1.2;
   static const double runningThreshold = 2.0;
-  static const double stationaryThreshold = 0.3; // Increased to account for device noise
-  
+  static const double stationaryThreshold =
+      0.3; // Increased to account for device noise
+
   // Impact detection improvements
-  static const double gravityCompensationThreshold = 5.0; // Minimum change to be considered movement
-  static const int impactCooldownMs = 2000; // Cooldown between impact detections
-  static const int impactConfirmationCount = 3; // Number of high readings needed to confirm impact
+  static const double gravityCompensationThreshold =
+      5.0; // Minimum change to be considered movement
+  static const int impactCooldownMs =
+      2000; // Cooldown between impact detections
+  static const int impactConfirmationCount =
+      3; // Number of high readings needed to confirm impact
 
   // Fall detection algorithm parameters
   static const double freeFallThreshold = 0.5; // G-force

@@ -112,6 +112,7 @@ class Alert {
       resolvedBy: resolvedBy ?? this.resolvedBy,
     );
   }
+
   String get alertTypeDescription {
     switch (type) {
       case AlertType.fall:

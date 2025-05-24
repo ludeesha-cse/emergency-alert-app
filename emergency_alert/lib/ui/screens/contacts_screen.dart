@@ -21,6 +21,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     super.initState();
     _loadContacts();
   }
+
   Future<void> _loadContacts() async {
     setState(() {
       _isLoading = true;
@@ -38,7 +39,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       setState(() {
         _isLoading = false;
       });
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Failed to load contacts')),
@@ -46,6 +47,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       }
     }
   }
+
   Future<void> _addContact() async {
     final result = await Navigator.of(
       context,
@@ -53,10 +55,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
     if (result != null && result is EmergencyContact) {
       final success = await _storageService.addContact(result);
-      
+
       if (success) {
         await _loadContacts(); // Reload to get updated list
-        
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Contact added successfully')),
@@ -71,6 +73,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       }
     }
   }
+
   Future<void> _editContact(EmergencyContact contact) async {
     final result = await Navigator.of(context).push(
       MaterialPageRoute(
@@ -80,10 +83,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
     if (result != null && result is EmergencyContact) {
       final success = await _storageService.updateContact(result);
-      
+
       if (success) {
         await _loadContacts(); // Reload to get updated list
-        
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Contact updated successfully')),
@@ -116,12 +119,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
           ),
         ],
       ),
-    );    if (confirmed == true) {
+    );
+    if (confirmed == true) {
       final success = await _storageService.removeContact(contact.id);
-      
+
       if (success) {
         await _loadContacts(); // Reload to get updated list
-        
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Contact deleted successfully')),
@@ -171,6 +175,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       }
     }
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -192,26 +197,26 @@ class _ContactsScreenState extends State<ContactsScreen> {
               ),
             )
           : _contacts.isEmpty
-              ? const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.contacts, size: 64, color: Colors.grey),
-                      SizedBox(height: 16),
-                      Text(
-                        'No Emergency Contacts',
-                        style: TextStyle(fontSize: 18, color: Colors.grey),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        'Add contacts who will be notified in emergencies',
-                        style: TextStyle(color: Colors.grey),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.contacts, size: 64, color: Colors.grey),
+                  SizedBox(height: 16),
+                  Text(
+                    'No Emergency Contacts',
+                    style: TextStyle(fontSize: 18, color: Colors.grey),
                   ),
-                )
-              : ListView.builder(
+                  SizedBox(height: 8),
+                  Text(
+                    'Add contacts who will be notified in emergencies',
+                    style: TextStyle(color: Colors.grey),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            )
+          : ListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: _contacts.length,
               itemBuilder: (context, index) {

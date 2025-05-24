@@ -12,7 +12,8 @@ import 'location/location_service.dart';
 import 'alert_storage_service.dart';
 
 class EmergencyResponseService {
-  static final EmergencyResponseService _instance = EmergencyResponseService._internal();
+  static final EmergencyResponseService _instance =
+      EmergencyResponseService._internal();
   factory EmergencyResponseService() => _instance;
   EmergencyResponseService._internal();
 
@@ -21,9 +22,12 @@ class EmergencyResponseService {
   bool _isEmergencyActive = false;
 
   // Stream controllers for emergency state
-  final StreamController<Alert?> _currentAlertController = StreamController<Alert?>.broadcast();
-  final StreamController<int> _countdownController = StreamController<int>.broadcast();
-  final StreamController<bool> _emergencyActiveController = StreamController<bool>.broadcast();
+  final StreamController<Alert?> _currentAlertController =
+      StreamController<Alert?>.broadcast();
+  final StreamController<int> _countdownController =
+      StreamController<int>.broadcast();
+  final StreamController<bool> _emergencyActiveController =
+      StreamController<bool>.broadcast();
 
   Stream<Alert?> get currentAlertStream => _currentAlertController.stream;
   Stream<int> get countdownStream => _countdownController.stream;
@@ -70,7 +74,7 @@ class EmergencyResponseService {
 
       _currentAlert = alert;
       _isEmergencyActive = true;
-      
+
       _currentAlertController.add(alert);
       _emergencyActiveController.add(true);
 
@@ -79,7 +83,6 @@ class EmergencyResponseService {
 
       // Start countdown
       await _startCountdown(alert, contacts, location?.address);
-
     } catch (e) {
       print('Error triggering emergency: $e');
       await _cleanup();
@@ -164,16 +167,22 @@ class EmergencyResponseService {
   }
 
   /// Start countdown timer
-  Future<void> _startCountdown(Alert alert, List<EmergencyContact> contacts, String? locationInfo) async {
+  Future<void> _startCountdown(
+    Alert alert,
+    List<EmergencyContact> contacts,
+    String? locationInfo,
+  ) async {
     int remainingSeconds = AppConstants.alertCountdownSeconds;
-    
-    _emergencyCountdown = Timer.periodic(const Duration(seconds: 1), (timer) async {
+
+    _emergencyCountdown = Timer.periodic(const Duration(seconds: 1), (
+      timer,
+    ) async {
       remainingSeconds--;
       _countdownController.add(remainingSeconds);
 
       if (remainingSeconds <= 0) {
         timer.cancel();
-        
+
         // Send emergency alerts after countdown
         await _sendEmergencyAlerts(alert, contacts, locationInfo);
       }
@@ -181,7 +190,11 @@ class EmergencyResponseService {
   }
 
   /// Send emergency alerts via SMS and update status
-  Future<void> _sendEmergencyAlerts(Alert alert, List<EmergencyContact> contacts, String? locationInfo) async {
+  Future<void> _sendEmergencyAlerts(
+    Alert alert,
+    List<EmergencyContact> contacts,
+    String? locationInfo,
+  ) async {
     try {
       final smsService = SmsService();
 
@@ -208,10 +221,9 @@ class EmergencyResponseService {
       Future.delayed(const Duration(minutes: 2), () async {
         await _cleanup();
       });
-
     } catch (e) {
       print('Error sending emergency alerts: $e');
-      
+
       // Mark as failed
       final failedAlert = alert.copyWith(status: AlertStatus.failed);
       _currentAlert = failedAlert;
@@ -256,8 +268,9 @@ class EmergencyResponseService {
   Future<List<EmergencyContact>> _getEmergencyContacts() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final contactsJson = prefs.getStringList(AppConstants.keyEmergencyContacts) ?? [];
-      
+      final contactsJson =
+          prefs.getStringList(AppConstants.keyEmergencyContacts) ?? [];
+
       return contactsJson
           .map((json) => EmergencyContact.fromJson(jsonDecode(json)))
           .toList();
@@ -271,7 +284,8 @@ class EmergencyResponseService {
   Future<void> _saveAlertToHistory(Alert alert) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final historyJson = prefs.getStringList(AppConstants.keyAlertHistory) ?? [];
+      final historyJson =
+          prefs.getStringList(AppConstants.keyAlertHistory) ?? [];
 
       historyJson.add(jsonEncode(alert.toJson()));
 

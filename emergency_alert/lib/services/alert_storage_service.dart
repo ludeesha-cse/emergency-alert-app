@@ -9,15 +9,16 @@ class AlertStorageService {
   Future<List<Alert>> loadAlerts() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final historyJson = prefs.getStringList(AppConstants.keyAlertHistory) ?? [];
-      
+      final historyJson =
+          prefs.getStringList(AppConstants.keyAlertHistory) ?? [];
+
       final alerts = historyJson
           .map((json) => Alert.fromJson(jsonDecode(json)))
           .toList();
-      
+
       // Sort by timestamp, most recent first
       alerts.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-      
+
       return alerts;
     } catch (e) {
       print('Error loading alerts from storage: $e');
@@ -29,16 +30,17 @@ class AlertStorageService {
   Future<void> saveAlert(Alert alert) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final historyJson = prefs.getStringList(AppConstants.keyAlertHistory) ?? [];
-      
+      final historyJson =
+          prefs.getStringList(AppConstants.keyAlertHistory) ?? [];
+
       // Add new alert
       historyJson.add(jsonEncode(alert.toJson()));
-      
+
       // Keep only last 100 alerts
       if (historyJson.length > 100) {
         historyJson.removeAt(0);
       }
-      
+
       await prefs.setStringList(AppConstants.keyAlertHistory, historyJson);
     } catch (e) {
       print('Error saving alert to storage: $e');
@@ -50,8 +52,9 @@ class AlertStorageService {
   Future<void> updateAlert(Alert updatedAlert) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final historyJson = prefs.getStringList(AppConstants.keyAlertHistory) ?? [];
-      
+      final historyJson =
+          prefs.getStringList(AppConstants.keyAlertHistory) ?? [];
+
       // Find and update the alert
       bool found = false;
       for (int i = 0; i < historyJson.length; i++) {
@@ -62,17 +65,17 @@ class AlertStorageService {
           break;
         }
       }
-      
+
       if (!found) {
         // If alert doesn't exist, add it
         historyJson.add(jsonEncode(updatedAlert.toJson()));
       }
-      
+
       // Keep only last 100 alerts
       if (historyJson.length > 100) {
         historyJson.removeAt(0);
       }
-      
+
       await prefs.setStringList(AppConstants.keyAlertHistory, historyJson);
     } catch (e) {
       print('Error updating alert in storage: $e');
@@ -84,14 +87,15 @@ class AlertStorageService {
   Future<void> deleteAlert(String alertId) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final historyJson = prefs.getStringList(AppConstants.keyAlertHistory) ?? [];
-      
+      final historyJson =
+          prefs.getStringList(AppConstants.keyAlertHistory) ?? [];
+
       // Remove the alert with matching ID
       historyJson.removeWhere((json) {
         final alertData = jsonDecode(json);
         return alertData['id'] == alertId;
       });
-      
+
       await prefs.setStringList(AppConstants.keyAlertHistory, historyJson);
     } catch (e) {
       print('Error deleting alert from storage: $e');
@@ -169,15 +173,16 @@ class AlertStorageService {
       throw Exception('Failed to import alerts: $e');
     }
   }
+
   /// Get alerts statistics
   Future<Map<String, dynamic>> getAlertsStatistics() async {
     try {
       final alerts = await loadAlerts();
-      
+
       final byType = <String, int>{};
       final byStatus = <String, int>{};
       final bySeverity = <String, int>{};
-      
+
       final stats = {
         'total': alerts.length,
         'byType': byType,
