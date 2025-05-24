@@ -118,18 +118,7 @@ class _PermissionScreenState extends State<PermissionScreen> {
                       ),
                       permissionService.isSensorsGranted,
                     ),
-                    _buildPermissionCard(
-                      PermissionModel(
-                        name: 'Notifications',
-                        description:
-                            'Required for the app to run in background and show important alerts',
-                        icon: Icons.notifications,
-                        permission: Permission.notification,
-                        requestPermission:
-                            permissionService.requestNotificationPermission,
-                      ),
-                      permissionService.isNotificationGranted,
-                    ),
+                    _buildNotificationPermissionCard(permissionService),
                     const SizedBox(height: 24),
                     _buildRequestAllButton(permissionService),
                     if (!permissionService.areAllPermissionsGranted)
@@ -300,6 +289,98 @@ class _PermissionScreenState extends State<PermissionScreen> {
             child: const Text('Open Settings'),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Special handling for notification permissions
+  /// On Android 13+, we need to direct users to the system settings
+  Widget _buildNotificationPermissionCard(PermissionService permissionService) {
+    final isGranted = permissionService.isNotificationGranted;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.notifications,
+                      color: Theme.of(context).primaryColor,
+                      size: 28,
+                    ),
+                    const SizedBox(width: 12),
+                    const Text(
+                      'Notifications',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                _buildStatusChip(isGranted),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Required for the app to run in background and show important alerts. This permission must be granted in Android system settings on newer devices.',
+              style: TextStyle(color: Colors.grey, fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            if (!isGranted)
+              Column(
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        final granted = await permissionService
+                            .requestNotificationPermission();
+                        await _loadPermissionStatus();
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Theme.of(context).primaryColor,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('Request Notification Permission'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'If the button above does not work, please use the button below to open app settings and enable notifications manually.',
+                    style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.settings),
+                      label: const Text('Open App Settings'),
+                      onPressed: () async {
+                        await permissionService.openSettings();
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'How to enable: Settings > Apps > Emergency Alert > Notifications > Allow notifications',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic,
+                      color: Colors.blue,
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
       ),
     );
   }

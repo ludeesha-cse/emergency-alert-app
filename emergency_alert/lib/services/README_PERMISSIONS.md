@@ -159,3 +159,25 @@ When permissions are denied, the app should degrade gracefully:
 4. For background execution:
    - Notify user that alerts only work when app is in foreground
    - Provide instructions on how to enable background execution
+
+## Special Notes for Notification Permissions
+
+On Android 13 (API level 33) and higher, users must explicitly grant notification permissions through system settings. The app handles this with the following strategies:
+
+1. **Clear Notification Banner**: A prominent amber banner is displayed when notification permissions are not granted
+2. **Direct Settings Access**: Users are guided to system settings with detailed instructions
+3. **Graceful Degradation**: The app continues to function in a limited capacity without notifications
+4. **POST_NOTIFICATIONS Permission**: The AndroidManifest.xml includes the proper permission declaration
+
+### Troubleshooting Notification Issues
+
+If notification permissions cannot be granted:
+
+1. Go to Android Settings > Apps > Emergency Alert > Notifications
+2. Toggle "Allow notifications" to ON
+3. Return to the app and verify the permission is granted
+
+On some devices, you may need to:
+
+1. Go to Settings > Apps > Emergency Alert > Permissions > Notifications
+2. Set notification permission to "Allow"

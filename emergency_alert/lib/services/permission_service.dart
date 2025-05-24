@@ -156,9 +156,55 @@ class PermissionService extends ChangeNotifier {
   }
 
   /// Request notification permission for foreground service
+  ///
+  /// Note: On Android 13+ (API level 33+), the proper permission is POST_NOTIFICATIONS
+  /// and may require the user to manually enable it in settings
   Future<bool> requestNotificationPermission() async {
-    final status = await Permission.notification.request();
-    _isNotificationGranted = status.isGranted;
+    try {
+      // Try standard permission request first
+      final status = await Permission.notification.request();
+      bool isGranted = status.isGranted;
+
+      if (!isGranted) {
+        // If not granted and on Android 13+, we need to handle special case
+        // The permission_handler package handles this internally, but we need
+        // to explicitly guide the user to system settings
+
+        // Check if permission can be requested through normal means
+        if (status.isPermanentlyDenied) {
+          // Can only be granted from settings at this point
+          await openAppSettings();
+
+          // Wait a moment for user to potentially come back from settings
+          await Future.delayed(const Duration(milliseconds: 500));
+
+          // Check status again
+          final newStatus = await Permission.notification.status;
+          isGranted = newStatus.isGranted;
+        } else if (status.isDenied) {
+          // Let's try one more time with specific notification setting request
+          try {
+            // This is a safer approach to handle notification settings
+            await openAppSettings();
+
+            // Wait a moment for user to potentially come back from settings
+            await Future.delayed(const Duration(milliseconds: 500));
+
+            // Check status again
+            final newStatus = await Permission.notification.status;
+            isGranted = newStatus.isGranted;
+          } catch (e) {
+            print('Error opening notification settings: $e');
+          }
+        }
+      }
+
+      _isNotificationGranted = isGranted;
+    } catch (e) {
+      print('Error requesting notification permission: $e');
+      _isNotificationGranted = false;
+    }
+
     await _savePermissionState(_notificationPermKey, _isNotificationGranted);
     notifyListeners();
     return _isNotificationGranted;

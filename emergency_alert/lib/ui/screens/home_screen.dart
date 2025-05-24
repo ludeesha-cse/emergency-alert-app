@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../services/sensor/sensor_service.dart';
 import '../../services/location/location_service.dart';
 import '../../services/background/background_service.dart';
+import '../../services/permission_service.dart';
 import '../../utils/permission_helper.dart';
 import '../../models/sensor_data.dart';
 import '../screens/permission_screen.dart';
@@ -17,9 +19,9 @@ class _HomeScreenState extends State<HomeScreen> {
   final SensorService _sensorService = SensorService();
   final LocationService _locationService = LocationService();
   final BackgroundService _backgroundService = BackgroundService();
-
   bool _isMonitoring = false;
   bool _hasPermissions = false;
+  bool _notificationsEnabled = false;
   SensorData? _currentSensorData;
   LocationData? _currentLocation;
 
@@ -39,30 +41,37 @@ class _HomeScreenState extends State<HomeScreen> {
     final permissions = await PermissionHelper.checkAllPermissions();
 
     // Check if all required permissions are granted
-    final requiredPermissions = [
+    final criticalPermissions = [
       'location',
       'backgroundLocation',
       'sms',
       'microphone',
-      'notification',
     ];
 
-    bool allRequired = true;
-    for (var permission in requiredPermissions) {
+    // Notification is treated separately since it may require special handling
+    final hasNotificationPermission = permissions['notification'] == true;
+
+    bool allCriticalGranted = true;
+    for (var permission in criticalPermissions) {
       if (permissions.containsKey(permission) &&
           permissions[permission] == false) {
-        allRequired = false;
+        allCriticalGranted = false;
         break;
       }
     }
 
     setState(() {
-      _hasPermissions = allRequired;
+      // We can still function with limited capabilities if notifications are disabled
+      _hasPermissions = allCriticalGranted;
+      _notificationsEnabled = hasNotificationPermission;
     });
 
-    // Request permissions if not granted
-    if (!_hasPermissions) {
+    // Request permissions if critical ones are not granted
+    if (!allCriticalGranted) {
       await _requestPermissions();
+    } else if (!hasNotificationPermission) {
+      // If just notifications are missing, show a specific dialog
+      _showNotificationPermissionDialog();
     }
   }
 
@@ -111,6 +120,38 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
             child: const Text('Review Permissions'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Show a specialized dialog for notification permissions
+  void _showNotificationPermissionDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Notification Access Required'),
+        content: const Text(
+          'This app needs notification permissions to alert you during emergencies and to run properly in the background.\n\n'
+          'On newer Android devices, this permission must be granted from system settings. '
+          'Would you like to go to settings to enable notifications?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Later'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+              final permissionService = Provider.of<PermissionService>(
+                context,
+                listen: false,
+              );
+              await permissionService.openSettings();
+            },
+            child: const Text('Open Settings'),
           ),
         ],
       ),
@@ -269,16 +310,62 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 8),
                     Text(
                       _hasPermissions
-                          ? 'All permissions granted'
+                          ? (_notificationsEnabled
+                                ? 'All permissions granted'
+                                : 'Limited functionality - Notifications disabled')
                           : 'Permissions required',
                       style: TextStyle(
-                        color: _hasPermissions ? Colors.green : Colors.orange,
+                        color: _hasPermissions
+                            ? (_notificationsEnabled
+                                  ? Colors.green
+                                  : Colors.orange)
+                            : Colors.orange,
                       ),
                     ),
                   ],
                 ),
               ),
             ),
+
+            // Show notification warning banner if needed
+            if (!_notificationsEnabled)
+              Card(
+                margin: const EdgeInsets.only(top: 16),
+                color: Colors.amber.shade100,
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.notification_important,
+                            color: Colors.amber.shade800,
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Notifications Disabled',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Emergency alerts may not work properly. Background monitoring and alerts require notification permission.',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                      const SizedBox(height: 8),
+                      OutlinedButton(
+                        onPressed: () {
+                          _showNotificationPermissionDialog();
+                        },
+                        child: const Text('Enable Notifications'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
 
             const SizedBox(height: 16),
 
