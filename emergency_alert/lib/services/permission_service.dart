@@ -305,6 +305,41 @@ class PermissionService extends ChangeNotifier {
     return allGranted;
   }
 
+  /// Request battery optimization permission with guidance
+  Future<bool> requestBatteryOptimizationPermission() async {
+    try {
+      if (kDebugMode) {
+        print('Requesting battery optimization permission...');
+      }
+
+      final status = await Permission.ignoreBatteryOptimizations.request();
+      final isGranted = status.isGranted;
+
+      if (kDebugMode) {
+        print('Battery optimization permission status: ${status.name}');
+      }
+
+      return isGranted;
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error requesting battery optimization permission: $e');
+      }
+      return false;
+    }
+  }
+
+  /// Check if battery optimization is disabled (permission granted)
+  Future<bool> isBatteryOptimizationDisabled() async {
+    try {
+      return await Permission.ignoreBatteryOptimizations.isGranted;
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error checking battery optimization status: $e');
+      }
+      return false;
+    }
+  }
+
   /// Opens app settings page so user can enable permissions manually
   Future<bool> openSettings() async {
     return await openAppSettings();

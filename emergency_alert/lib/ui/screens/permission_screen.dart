@@ -3,12 +3,11 @@ import 'package:provider/provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../models/permission_model.dart';
 import '../../services/permission_service.dart';
+import '../dialogs/battery_optimization_dialog.dart';
 
 class PermissionScreen extends StatefulWidget {
   final VoidCallback? onAllPermissionsGranted;
-
-  const PermissionScreen({Key? key, this.onAllPermissionsGranted})
-    : super(key: key);
+  const PermissionScreen({super.key, this.onAllPermissionsGranted});
 
   @override
   State<PermissionScreen> createState() => _PermissionScreenState();
@@ -119,6 +118,7 @@ class _PermissionScreenState extends State<PermissionScreen> {
                       permissionService.isSensorsGranted,
                     ),
                     _buildNotificationPermissionCard(permissionService),
+                    _buildBatteryOptimizationCard(permissionService),
                     const SizedBox(height: 24),
                     _buildRequestAllButton(permissionService),
                     if (!permissionService.areAllPermissionsGranted)
@@ -398,10 +398,116 @@ class _PermissionScreenState extends State<PermissionScreen> {
       ),
     );
   }
+
+  Widget _buildBatteryOptimizationCard(PermissionService permissionService) {
+    return FutureBuilder<bool>(
+      future: permissionService.isBatteryOptimizationDisabled(),
+      builder: (context, snapshot) {
+        final isGranted = snapshot.data ?? false;
+
+        return Card(
+          margin: const EdgeInsets.only(bottom: 16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.battery_alert,
+                          color: Theme.of(context).primaryColor,
+                          size: 28,
+                        ),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'Battery Optimization',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    _buildStatusChip(isGranted),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Disable battery optimization to ensure the app continues monitoring for emergencies in the background without being killed by the system.',
+                  style: TextStyle(color: Colors.grey, fontSize: 14),
+                ),
+                const SizedBox(height: 16),
+                if (!isGranted)
+                  Column(
+                    children: [
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            // Try automatic request first
+                            final granted = await permissionService
+                                .requestBatteryOptimizationPermission();
+
+                            if (!granted && mounted) {
+                              // If automatic request fails, show guidance dialog
+                              final userWentToSettings =
+                                  await BatteryOptimizationDialog.show(context);
+
+                              if (userWentToSettings == true) {
+                                // Refresh status after user potentially changed settings
+                                setState(() {});
+
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Please return to the app after disabling battery optimization',
+                                    ),
+                                    duration: Duration(seconds: 3),
+                                  ),
+                                );
+                              }
+                            } else if (granted && mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Battery optimization disabled successfully!',
+                                  ),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                              setState(() {});
+                            }
+                          },
+                          child: const Text('Disable Battery Optimization'),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Note: If the automatic request doesn\'t work, you\'ll be guided to manually disable it in system settings.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                          fontStyle: FontStyle.italic,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _HeaderWidget extends StatelessWidget {
-  const _HeaderWidget({Key? key}) : super(key: key);
+  const _HeaderWidget({super.key});
 
   @override
   Widget build(BuildContext context) {

@@ -9,7 +9,7 @@ import 'flashlight/flashlight_service.dart';
 import 'vibration/vibration_service.dart';
 import 'sms/sms_service.dart';
 import 'location/location_service.dart';
-import 'alert_storage_service.dart';
+import 'logger/logger_service.dart';
 
 class EmergencyResponseService {
   static final EmergencyResponseService _instance =
@@ -43,7 +43,7 @@ class EmergencyResponseService {
     AlertSeverity severity = AlertSeverity.high,
   }) async {
     if (_isEmergencyActive) {
-      print('Emergency already active, ignoring trigger');
+      LoggerService.warning('Emergency already active, ignoring trigger');
       return;
     }
 
@@ -51,7 +51,7 @@ class EmergencyResponseService {
       // Get emergency contacts
       final contacts = await _getEmergencyContacts();
       if (contacts.isEmpty) {
-        print('No emergency contacts configured');
+        LoggerService.warning('No emergency contacts configured');
         return;
       }
 
@@ -84,7 +84,7 @@ class EmergencyResponseService {
       // Start countdown
       await _startCountdown(alert, contacts, location?.address);
     } catch (e) {
-      print('Error triggering emergency: $e');
+      LoggerService.error('Error triggering emergency: $e');
       await _cleanup();
     }
   }
@@ -118,9 +118,9 @@ class EmergencyResponseService {
 
       await _cleanup();
 
-      print('Emergency cancelled successfully');
+      LoggerService.info('Emergency cancelled successfully');
     } catch (e) {
-      print('Error cancelling emergency: $e');
+      LoggerService.error('Error cancelling emergency: $e');
     }
   }
 
@@ -142,9 +142,9 @@ class EmergencyResponseService {
       // Send emergency alerts
       await _sendEmergencyAlerts(_currentAlert!, contacts, location?.address);
 
-      print('Emergency sent immediately');
+      LoggerService.info('Emergency sent immediately');
     } catch (e) {
-      print('Error sending emergency immediately: $e');
+      LoggerService.error('Error sending emergency immediately: $e');
     }
   }
 
@@ -162,7 +162,7 @@ class EmergencyResponseService {
         flashlightService.startEmergencyFlashing(),
       ]);
     } catch (e) {
-      print('Error starting immediate response: $e');
+      LoggerService.error('Error starting immediate response: $e');
     }
   }
 
@@ -222,7 +222,7 @@ class EmergencyResponseService {
         await _cleanup();
       });
     } catch (e) {
-      print('Error sending emergency alerts: $e');
+      LoggerService.error('Error sending emergency alerts: $e');
 
       // Mark as failed
       final failedAlert = alert.copyWith(status: AlertStatus.failed);
@@ -243,7 +243,7 @@ class EmergencyResponseService {
         alert: alert,
       );
     } catch (e) {
-      print('Error sending cancellation SMS: $e');
+      LoggerService.error('Error sending cancellation SMS: $e');
     }
   }
 
@@ -260,7 +260,7 @@ class EmergencyResponseService {
         vibrationService.stopVibration(),
       ]);
     } catch (e) {
-      print('Error stopping emergency response: $e');
+      LoggerService.error('Error stopping emergency response: $e');
     }
   }
 
@@ -275,7 +275,7 @@ class EmergencyResponseService {
           .map((json) => EmergencyContact.fromJson(jsonDecode(json)))
           .toList();
     } catch (e) {
-      print('Error getting emergency contacts: $e');
+      LoggerService.error('Error getting emergency contacts: $e');
       return [];
     }
   }
@@ -296,7 +296,7 @@ class EmergencyResponseService {
 
       await prefs.setStringList(AppConstants.keyAlertHistory, historyJson);
     } catch (e) {
-      print('Error saving alert to history: $e');
+      LoggerService.error('Error saving alert to history: $e');
     }
   }
 

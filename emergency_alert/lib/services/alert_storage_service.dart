@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/alert.dart';
 import '../utils/constants.dart';
+import 'logger/logger_service.dart';
 
 /// Service for managing alert history storage
 class AlertStorageService {
@@ -21,7 +22,7 @@ class AlertStorageService {
 
       return alerts;
     } catch (e) {
-      print('Error loading alerts from storage: $e');
+      LoggerService.error('Error loading alerts from storage', e);
       return [];
     }
   }
@@ -43,7 +44,7 @@ class AlertStorageService {
 
       await prefs.setStringList(AppConstants.keyAlertHistory, historyJson);
     } catch (e) {
-      print('Error saving alert to storage: $e');
+      LoggerService.error('Error saving alert to storage', e);
       throw Exception('Failed to save alert: $e');
     }
   }
@@ -78,7 +79,7 @@ class AlertStorageService {
 
       await prefs.setStringList(AppConstants.keyAlertHistory, historyJson);
     } catch (e) {
-      print('Error updating alert in storage: $e');
+      LoggerService.error('Error updating alert in storage', e);
       throw Exception('Failed to update alert: $e');
     }
   }
@@ -98,7 +99,7 @@ class AlertStorageService {
 
       await prefs.setStringList(AppConstants.keyAlertHistory, historyJson);
     } catch (e) {
-      print('Error deleting alert from storage: $e');
+      LoggerService.error('Error deleting alert from storage', e);
       throw Exception('Failed to delete alert: $e');
     }
   }
@@ -109,7 +110,7 @@ class AlertStorageService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(AppConstants.keyAlertHistory);
     } catch (e) {
-      print('Error clearing alerts from storage: $e');
+      LoggerService.error('Error clearing alerts from storage', e);
       throw Exception('Failed to clear alerts: $e');
     }
   }
@@ -146,7 +147,7 @@ class AlertStorageService {
       final alertsJson = alerts.map((alert) => alert.toJson()).toList();
       return jsonEncode(alertsJson);
     } catch (e) {
-      print('Error exporting alerts: $e');
+      LoggerService.error('Error exporting alerts', e);
       throw Exception('Failed to export alerts: $e');
     }
   }
@@ -169,7 +170,7 @@ class AlertStorageService {
         await saveAlert(alert);
       }
     } catch (e) {
-      print('Error importing alerts: $e');
+      LoggerService.error('Error importing alerts', e);
       throw Exception('Failed to import alerts: $e');
     }
   }
@@ -220,7 +221,7 @@ class AlertStorageService {
 
       return stats;
     } catch (e) {
-      print('Error getting alerts statistics: $e');
+      LoggerService.error('Error getting alerts statistics', e);
       return {};
     }
   }

@@ -91,6 +91,11 @@ class PermissionHelper {
         PermissionStatus.granted;
   }
 
+  /// Check if battery optimization permission is granted
+  static Future<bool> isBatteryOptimizationGranted() async {
+    return await Permission.ignoreBatteryOptimizations.isGranted;
+  }
+
   /// Opens the app settings page so the user can grant permissions manually
   static Future<bool> openAppSettings() async {
     final permissionService = _getPermissionService();

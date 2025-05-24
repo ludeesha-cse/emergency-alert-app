@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/contact.dart';
 import '../utils/constants.dart';
+import 'logger/logger_service.dart';
 
 class ContactStorageService {
   static final ContactStorageService _instance =
@@ -20,7 +21,7 @@ class ContactStorageService {
           .map((json) => EmergencyContact.fromJson(jsonDecode(json)))
           .toList();
     } catch (e) {
-      print('Error loading contacts: $e');
+      LoggerService.error('Error loading contacts', e);
       return [];
     }
   }
@@ -39,7 +40,7 @@ class ContactStorageService {
       );
       return true;
     } catch (e) {
-      print('Error saving contacts: $e');
+      LoggerService.error('Error saving contacts', e);
       return false;
     }
   }
@@ -51,20 +52,20 @@ class ContactStorageService {
 
       // Check if we're at the limit
       if (contacts.length >= AppConstants.maxEmergencyContacts) {
-        print('Maximum number of emergency contacts reached');
+        LoggerService.warning('Maximum number of emergency contacts reached');
         return false;
       }
 
       // Check for duplicate phone numbers
       if (contacts.any((c) => c.phoneNumber == contact.phoneNumber)) {
-        print('Contact with this phone number already exists');
+        LoggerService.warning('Contact with this phone number already exists');
         return false;
       }
 
       contacts.add(contact);
       return await saveContacts(contacts);
     } catch (e) {
-      print('Error adding contact: $e');
+      LoggerService.error('Error adding contact', e);
       return false;
     }
   }
@@ -76,7 +77,7 @@ class ContactStorageService {
       final index = contacts.indexWhere((c) => c.id == updatedContact.id);
 
       if (index == -1) {
-        print('Contact not found for update');
+        LoggerService.warning('Contact not found for update');
         return false;
       }
 
@@ -86,14 +87,16 @@ class ContactStorageService {
             c.id != updatedContact.id &&
             c.phoneNumber == updatedContact.phoneNumber,
       )) {
-        print('Another contact with this phone number already exists');
+        LoggerService.warning(
+          'Another contact with this phone number already exists',
+        );
         return false;
       }
 
       contacts[index] = updatedContact;
       return await saveContacts(contacts);
     } catch (e) {
-      print('Error updating contact: $e');
+      LoggerService.error('Error updating contact', e);
       return false;
     }
   }
@@ -105,7 +108,7 @@ class ContactStorageService {
       contacts.removeWhere((c) => c.id == contactId);
       return await saveContacts(contacts);
     } catch (e) {
-      print('Error removing contact: $e');
+      LoggerService.error('Error removing contact', e);
       return false;
     }
   }
@@ -123,7 +126,7 @@ class ContactStorageService {
       contacts[index] = contacts[index].copyWith(isEnabled: enabled);
       return await saveContacts(contacts);
     } catch (e) {
-      print('Error toggling contact status: $e');
+      LoggerService.error('Error toggling contact status', e);
       return false;
     }
   }
@@ -164,7 +167,7 @@ class ContactStorageService {
 
       return jsonEncode(exportData);
     } catch (e) {
-      print('Error exporting contacts: $e');
+      LoggerService.error('Error exporting contacts', e);
       return null;
     }
   }
@@ -175,7 +178,7 @@ class ContactStorageService {
       final data = jsonDecode(jsonData) as Map<String, dynamic>;
 
       if (!data.containsKey('contacts')) {
-        print('Invalid import data format');
+        LoggerService.warning('Invalid import data format');
         return false;
       }
 
@@ -186,14 +189,14 @@ class ContactStorageService {
       // Validate all contacts before importing
       for (final contact in importedContacts) {
         if (!validateContact(contact)) {
-          print('Invalid contact data found in import');
+          LoggerService.warning('Invalid contact data found in import');
           return false;
         }
       }
 
       return await saveContacts(importedContacts);
     } catch (e) {
-      print('Error importing contacts: $e');
+      LoggerService.error('Error importing contacts', e);
       return false;
     }
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../models/alert.dart';
 import '../../services/alert_storage_service.dart';
+import '../../services/logger/logger_service.dart';
 
 class AlertHistoryScreen extends StatefulWidget {
   const AlertHistoryScreen({super.key});
@@ -39,7 +40,7 @@ class _AlertHistoryScreenState extends State<AlertHistoryScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      print('Error loading alerts: $e');
+      LoggerService.error('Error loading alerts', e);
       setState(() {
         // Fall back to sample alerts on error
         _alerts = sampleAlerts;
@@ -323,7 +324,7 @@ class _AlertHistoryScreenState extends State<AlertHistoryScreen> {
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 26), // 0.1 * 255 ≈ 26
         borderRadius: BorderRadius.circular(8),
       ),
       child: Icon(icon, color: color, size: 24),
@@ -337,7 +338,7 @@ class _AlertHistoryScreenState extends State<AlertHistoryScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 26), // 0.1 * 255 ≈ 26
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
@@ -449,7 +450,7 @@ class _AlertHistoryScreenState extends State<AlertHistoryScreen> {
         context,
       ).showSnackBar(const SnackBar(content: Text('Alert marked as resolved')));
     } catch (e) {
-      print('Error updating alert: $e');
+      LoggerService.error('Error updating alert', e);
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Failed to update alert')));

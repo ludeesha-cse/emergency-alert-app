@@ -9,12 +9,12 @@ import '../audio/audio_service.dart';
 import '../flashlight/flashlight_service.dart';
 import '../vibration/vibration_service.dart';
 import '../notification/notification_helper.dart';
+import '../logger/logger_service.dart';
 import '../../models/alert.dart';
 import '../../models/contact.dart';
 import '../../utils/constants.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import '../alert_storage_service.dart';
 
 // Entry point annotation required for AOT compilation
 @pragma('vm:entry-point')
@@ -22,19 +22,22 @@ class BackgroundService {
   static final BackgroundService _instance = BackgroundService._internal();
   factory BackgroundService() => _instance;
 
+  bool _isRunning = false;
+  bool get isRunning => _isRunning;
+
   @pragma('vm:entry-point')
   BackgroundService._internal();
 
-  bool _isRunning = false;
-  bool get isRunning => _isRunning;
   Future<void> initialize() async {
     // Initialize the notification helper first
+    LoggerService.info('Initializing background service');
     await NotificationHelper().initialize();
     await _initializeFlutterBackgroundService();
   }
 
   Future<void> _initializeFlutterBackgroundService() async {
     final service = FlutterBackgroundService();
+    LoggerService.debug('Configuring background service');
     await service.configure(
       androidConfiguration: AndroidConfiguration(
         onStart: onStart,
@@ -58,10 +61,10 @@ class BackgroundService {
     if (_isRunning) return;
 
     try {
-      print('Starting background service...');
+      LoggerService.info('Starting background service...');
       final service = FlutterBackgroundService();
       await service.startService();
-      print('Background service started successfully');
+      LoggerService.info('Background service started successfully');
 
       // Instead, we'll use a Timer for periodic background checks
       Timer.periodic(
@@ -70,9 +73,9 @@ class BackgroundService {
       );
 
       _isRunning = true;
-      print('Background service is now running');
+      LoggerService.info('Background service is now running');
     } catch (e) {
-      print('Error starting background service: $e');
+      LoggerService.error('Error starting background service: $e');
       _isRunning = false;
       rethrow;
     }
@@ -86,7 +89,7 @@ class BackgroundService {
 
       _isRunning = false;
     } catch (e) {
-      print('Error stopping background service: $e');
+      LoggerService.error('Error stopping background service: $e');
     }
   }
 
@@ -126,7 +129,7 @@ class BackgroundService {
     }); // Set up proper notification for foreground service
     if (service is AndroidServiceInstance) {
       try {
-        print('Setting up foreground service notification...');
+        LoggerService.info('Setting up foreground service notification...');
 
         // First set up a notification channel and show a notification
         final notificationHelper = NotificationHelper();
@@ -135,11 +138,11 @@ class BackgroundService {
           title: "Emergency Alert Active",
           body: "Monitoring for emergencies",
         );
-        print('Foreground notification created');
+        LoggerService.info('Foreground notification created');
 
         // Then switch to foreground mode
         await service.setAsForegroundService();
-        print('Service set as foreground service');
+        LoggerService.info('Service set as foreground service');
 
         // Update notification periodically
         Timer.periodic(Duration(seconds: 30), (timer) async {
@@ -151,12 +154,12 @@ class BackgroundService {
               body: "Last check: $timeString",
             );
           } catch (e) {
-            print('Error updating notification: $e');
+            LoggerService.error('Error updating notification: $e');
           }
         });
       } catch (e) {
-        print('Error setting up foreground service: $e');
-        print('Stack trace: ${StackTrace.current}');
+        LoggerService.error('Error setting up foreground service: $e');
+        LoggerService.error('Stack trace: ${StackTrace.current}');
       }
     }
 
@@ -212,7 +215,7 @@ class BackgroundService {
       // Start countdown and emergency response
       await _startEmergencyResponse(alert, contacts, location?.address);
     } catch (e) {
-      print('Error handling emergency: $e');
+      LoggerService.error('Error handling emergency: $e');
     }
   }
 
@@ -231,7 +234,7 @@ class BackgroundService {
 
       await prefs.setStringList(AppConstants.keyAlertHistory, historyJson);
     } catch (e) {
-      print('Error saving alert to history: $e');
+      LoggerService.error('Error saving alert to history: $e');
     }
   }
 
@@ -273,7 +276,7 @@ class BackgroundService {
 
       await _saveAlertToHistory(updatedAlert);
     } catch (e) {
-      print('Error in emergency response: $e');
+      LoggerService.error('Error in emergency response: $e');
     }
   }
 

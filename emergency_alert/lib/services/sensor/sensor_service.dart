@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:sensors_plus/sensors_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/sensor_data.dart';
 import '../../utils/constants.dart';
 
@@ -32,10 +33,13 @@ class SensorService {
   DateTime? _lastImpactTime;
   int _consecutiveHighReadings = 0;
   final List<double> _recentMagnitudes = [];
-
   bool _isMonitoring = false;
   bool _fallDetectionEnabled = true;
   bool _impactDetectionEnabled = true;
+
+  // User-configurable sampling rates
+  int _accelerometerSamplingRate = SensorConstants.accelerometerSensitivity;
+  int _gyroscopeSamplingRate = SensorConstants.gyroscopeSamplingRate;
 
   bool get isMonitoring => _isMonitoring;
   bool get fallDetectionEnabled => _fallDetectionEnabled;
@@ -49,8 +53,28 @@ class SensorService {
     _impactDetectionEnabled = enabled;
   }
 
+  /// Load user-configurable sampling rates from SharedPreferences
+  Future<void> _loadSamplingRates() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _accelerometerSamplingRate =
+          prefs.getInt('accelerometer_sampling_rate') ??
+          SensorConstants.accelerometerSensitivity;
+      _gyroscopeSamplingRate =
+          prefs.getInt('gyroscope_sampling_rate') ??
+          SensorConstants.gyroscopeSamplingRate;
+    } catch (e) {
+      // If there's an error loading preferences, use default values
+      _accelerometerSamplingRate = SensorConstants.accelerometerSensitivity;
+      _gyroscopeSamplingRate = SensorConstants.gyroscopeSamplingRate;
+    }
+  }
+
   Future<void> startMonitoring() async {
     if (_isMonitoring) return;
+
+    // Load user-configurable sampling rates
+    await _loadSamplingRates();
 
     _isMonitoring = true;
 
@@ -58,7 +82,7 @@ class SensorService {
     _accelerometerSubscription =
         accelerometerEventStream(
           samplingPeriod: Duration(
-            milliseconds: 1000 ~/ SensorConstants.accelerometerSensitivity,
+            milliseconds: 1000 ~/ _accelerometerSamplingRate,
           ),
         ).listen((AccelerometerEvent event) {
           _lastAccelerometerEvent = event;
@@ -69,7 +93,7 @@ class SensorService {
     _gyroscopeSubscription =
         gyroscopeEventStream(
           samplingPeriod: Duration(
-            milliseconds: 1000 ~/ SensorConstants.gyroscopeSamplingRate,
+            milliseconds: 1000 ~/ _gyroscopeSamplingRate,
           ),
         ).listen((GyroscopeEvent event) {
           _lastGyroscopeEvent = event;
@@ -285,5 +309,13 @@ class SensorService {
     );
 
     return (magnitude - _baselineMagnitude).abs();
+  }
+
+  /// Restart monitoring with updated settings (e.g., new sampling rates)
+  Future<void> restartMonitoringWithNewSettings() async {
+    if (_isMonitoring) {
+      await stopMonitoring();
+      await startMonitoring();
+    }
   }
 }
