@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'services/permission_service.dart';
+import 'services/notification/notification_helper.dart';
 import 'ui/screens/main_navigation_screen.dart';
 
 void main() async {
@@ -12,10 +13,12 @@ void main() async {
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
-
   // Initialize permission service
   final permissionService = PermissionService();
   await permissionService.init();
+
+  // Initialize notification helper
+  await NotificationHelper().initialize();
 
   runApp(
     MultiProvider(

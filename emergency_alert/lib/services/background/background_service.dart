@@ -8,31 +8,36 @@ import '../sms/sms_service.dart';
 import '../audio/audio_service.dart';
 import '../flashlight/flashlight_service.dart';
 import '../vibration/vibration_service.dart';
+import '../notification/notification_helper.dart';
 import '../../models/alert.dart';
 import '../../models/contact.dart';
 import '../../utils/constants.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
+// Entry point annotation required for AOT compilation
+@pragma('vm:entry-point')
 class BackgroundService {
   static final BackgroundService _instance = BackgroundService._internal();
   factory BackgroundService() => _instance;
+
+  @pragma('vm:entry-point')
   BackgroundService._internal();
 
   bool _isRunning = false;
   bool get isRunning => _isRunning;
-
   Future<void> initialize() async {
+    // Initialize the notification helper first
+    await NotificationHelper().initialize();
     await _initializeFlutterBackgroundService();
   }
 
   Future<void> _initializeFlutterBackgroundService() async {
     final service = FlutterBackgroundService();
-
     await service.configure(
       androidConfiguration: AndroidConfiguration(
         onStart: onStart,
-        autoStart: true,
+        autoStart: false, // Changed to false to manually control start
         isForegroundMode: true,
         notificationChannelId:
             AppConstants.backgroundServiceNotificationChannelId,
@@ -52,8 +57,10 @@ class BackgroundService {
     if (_isRunning) return;
 
     try {
+      print('Starting background service...');
       final service = FlutterBackgroundService();
       await service.startService();
+      print('Background service started successfully');
 
       // Instead, we'll use a Timer for periodic background checks
       Timer.periodic(
@@ -62,8 +69,11 @@ class BackgroundService {
       );
 
       _isRunning = true;
+      print('Background service is now running');
     } catch (e) {
       print('Error starting background service: $e');
+      _isRunning = false;
+      rethrow;
     }
   }
 
@@ -79,12 +89,14 @@ class BackgroundService {
     }
   }
 
+  @pragma('vm:entry-point')
   static Future<bool> onIosBackground(ServiceInstance service) async {
     WidgetsFlutterBinding.ensureInitialized();
     DartPluginRegistrant.ensureInitialized();
     return true;
   }
 
+  @pragma('vm:entry-point')
   static void onStart(ServiceInstance service) async {
     DartPluginRegistrant.ensureInitialized();
     final sensorService = SensorService();
@@ -110,17 +122,42 @@ class BackgroundService {
       if (detected) {
         await _handleEmergencyDetected(AlertType.impact);
       }
-    });
+    }); // Set up proper notification for foreground service
+    if (service is AndroidServiceInstance) {
+      try {
+        print('Setting up foreground service notification...');
 
-    // Update notification periodically
-    Timer.periodic(Duration(seconds: 30), (timer) {
-      if (service is AndroidServiceInstance) {
-        service.setForegroundNotificationInfo(
+        // First set up a notification channel and show a notification
+        final notificationHelper = NotificationHelper();
+        await notificationHelper.showForegroundServiceNotification(
+          id: 888,
           title: "Emergency Alert Active",
-          content: "Last check: ${DateTime.now().toString().substring(11, 19)}",
+          body: "Monitoring for emergencies",
         );
+        print('Foreground notification created');
+
+        // Then switch to foreground mode
+        await service.setAsForegroundService();
+        print('Service set as foreground service');
+
+        // Update notification periodically
+        Timer.periodic(Duration(seconds: 30), (timer) async {
+          try {
+            final timeString = DateTime.now().toString().substring(11, 19);
+            await notificationHelper.updateForegroundServiceNotification(
+              id: 888,
+              title: "Emergency Alert Active",
+              body: "Last check: $timeString",
+            );
+          } catch (e) {
+            print('Error updating notification: $e');
+          }
+        });
+      } catch (e) {
+        print('Error setting up foreground service: $e');
+        print('Stack trace: ${StackTrace.current}');
       }
-    });
+    }
 
     service.on('stop').listen((event) {
       sensorService.stopMonitoring();

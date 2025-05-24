@@ -5,6 +5,7 @@ import '../../services/location/location_service.dart';
 import '../../services/background/background_service.dart';
 import '../../services/permission_service.dart';
 import '../../utils/permission_helper.dart';
+import '../../utils/permission_fallbacks.dart';
 import '../../models/sensor_data.dart';
 import '../screens/permission_screen.dart';
 
@@ -58,17 +59,27 @@ class _HomeScreenState extends State<HomeScreen> {
         allCriticalGranted = false;
         break;
       }
-    }
+    } // Use our new fallback system to determine if we can operate in limited mode
+    final permissionService = Provider.of<PermissionService>(
+      context,
+      listen: false,
+    );
+    await permissionService.checkPermissionStatuses();
+
+    // Determine if we can operate with the current permissions
+    final canOperateWithLimitations =
+        PermissionFallbacks.canOperateInLimitedMode(permissionService);
 
     setState(() {
-      // We can still function with limited capabilities if notifications are disabled
-      _hasPermissions = allCriticalGranted;
+      // We can still function with limited capabilities based on available permissions
+      _hasPermissions = canOperateWithLimitations;
       _notificationsEnabled = hasNotificationPermission;
-    });
-
-    // Request permissions if critical ones are not granted
-    if (!allCriticalGranted) {
+    }); // Request permissions if we can't operate even in limited mode
+    if (!_hasPermissions) {
       await _requestPermissions();
+    } else if (!allCriticalGranted) {
+      // Show limitations if we're operating in limited mode
+      PermissionFallbacks.showLimitationsDialog(context, permissionService);
     } else if (!hasNotificationPermission) {
       // If just notifications are missing, show a specific dialog
       _showNotificationPermissionDialog();
@@ -239,7 +250,25 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       await _sensorService.startMonitoring();
       await _locationService.startTracking();
-      await _backgroundService.startService();
+
+      // Start background service after permission checks
+      final permissionService = Provider.of<PermissionService>(
+        context,
+        listen: false,
+      );
+      if (permissionService.isNotificationGranted) {
+        await _backgroundService.startService();
+      } else {
+        // Show a snackbar warning that background monitoring won't work
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Notification permission not granted. Background monitoring will be limited.',
+            ),
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
 
       setState(() {
         _isMonitoring = true;
@@ -249,6 +278,7 @@ class _HomeScreenState extends State<HomeScreen> {
         const SnackBar(content: Text('Emergency monitoring started')),
       );
     } catch (e) {
+      print('Error starting monitoring: $e');
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Error starting monitoring: $e')));

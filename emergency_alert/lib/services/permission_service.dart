@@ -112,29 +112,59 @@ class PermissionService extends ChangeNotifier {
 
   /// Request location permission
   Future<bool> requestLocationPermission() async {
-    final status = await Permission.location.request();
-    _isLocationGranted = status.isGranted;
-    await _savePermissionState(_locationPermKey, _isLocationGranted);
-    notifyListeners();
-    return _isLocationGranted;
+    try {
+      final status = await Permission.location.request();
+      _isLocationGranted = status.isGranted;
+      await _savePermissionState(_locationPermKey, _isLocationGranted);
+
+      if (kDebugMode) {
+        print('Location permission request result: ${status.name}');
+      }
+
+      notifyListeners();
+      return _isLocationGranted;
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error requesting location permission: $e');
+      }
+      _isLocationGranted = false;
+      await _savePermissionState(_locationPermKey, false);
+      notifyListeners();
+      return false;
+    }
   }
 
   /// Request background location permission
   /// Note: This should be called after location permission is granted
   Future<bool> requestBackgroundLocationPermission() async {
-    if (!_isLocationGranted) {
-      final locationGranted = await requestLocationPermission();
-      if (!locationGranted) return false;
-    }
+    try {
+      if (!_isLocationGranted) {
+        final locationGranted = await requestLocationPermission();
+        if (!locationGranted) return false;
+      }
 
-    final status = await Permission.locationAlways.request();
-    _isBackgroundLocationGranted = status.isGranted;
-    await _savePermissionState(
-      _backgroundLocationPermKey,
-      _isBackgroundLocationGranted,
-    );
-    notifyListeners();
-    return _isBackgroundLocationGranted;
+      final status = await Permission.locationAlways.request();
+      _isBackgroundLocationGranted = status.isGranted;
+      await _savePermissionState(
+        _backgroundLocationPermKey,
+        _isBackgroundLocationGranted,
+      );
+
+      if (kDebugMode) {
+        print('Background location permission request result: ${status.name}');
+      }
+
+      notifyListeners();
+      return _isBackgroundLocationGranted;
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error requesting background location permission: $e');
+      }
+      _isBackgroundLocationGranted = false;
+      await _savePermissionState(_backgroundLocationPermKey, false);
+      notifyListeners();
+      return false;
+    }
   }
 
   /// Request microphone permission
@@ -161,9 +191,17 @@ class PermissionService extends ChangeNotifier {
   /// and may require the user to manually enable it in settings
   Future<bool> requestNotificationPermission() async {
     try {
+      if (kDebugMode) {
+        print('Requesting notification permission...');
+      }
+
       // Try standard permission request first
       final status = await Permission.notification.request();
       bool isGranted = status.isGranted;
+
+      if (kDebugMode) {
+        print('Initial notification permission status: ${status.name}');
+      }
 
       if (!isGranted) {
         // If not granted and on Android 13+, we need to handle special case
@@ -172,6 +210,11 @@ class PermissionService extends ChangeNotifier {
 
         // Check if permission can be requested through normal means
         if (status.isPermanentlyDenied) {
+          if (kDebugMode) {
+            print(
+              'Notification permission permanently denied, opening settings...',
+            );
+          }
           // Can only be granted from settings at this point
           await openAppSettings();
 
@@ -181,9 +224,18 @@ class PermissionService extends ChangeNotifier {
           // Check status again
           final newStatus = await Permission.notification.status;
           isGranted = newStatus.isGranted;
+
+          if (kDebugMode) {
+            print(
+              'Notification permission status after settings: ${newStatus.name}',
+            );
+          }
         } else if (status.isDenied) {
           // Let's try one more time with specific notification setting request
           try {
+            if (kDebugMode) {
+              print('Notification permission denied, opening settings...');
+            }
             // This is a safer approach to handle notification settings
             await openAppSettings();
 
@@ -193,15 +245,25 @@ class PermissionService extends ChangeNotifier {
             // Check status again
             final newStatus = await Permission.notification.status;
             isGranted = newStatus.isGranted;
+
+            if (kDebugMode) {
+              print(
+                'Notification permission status after retry: ${newStatus.name}',
+              );
+            }
           } catch (e) {
-            print('Error opening notification settings: $e');
+            if (kDebugMode) {
+              print('Error opening notification settings: $e');
+            }
           }
         }
       }
 
       _isNotificationGranted = isGranted;
     } catch (e) {
-      print('Error requesting notification permission: $e');
+      if (kDebugMode) {
+        print('Error requesting notification permission: $e');
+      }
       _isNotificationGranted = false;
     }
 

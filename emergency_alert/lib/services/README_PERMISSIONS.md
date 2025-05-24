@@ -139,26 +139,59 @@ if (permissionsGranted) {
 
 ## Graceful Fallbacks
 
-When permissions are denied, the app should degrade gracefully:
+When permissions are denied, the app degrades gracefully using the `PermissionFallbacks` utility class:
+
+### Fallback System
+
+The `PermissionFallbacks` class provides methods to determine how the app should operate with limited permissions:
+
+```dart
+import '../utils/permission_fallbacks.dart';
+
+// Check if we can operate in limited mode
+final canOperateWithLimitations = PermissionFallbacks.canOperateInLimitedMode(permissionService);
+
+// Get limitations description to show to the user
+final limitations = PermissionFallbacks.getLimitationsDescription(permissionService);
+
+// Show limitations dialog
+await PermissionFallbacks.showLimitationsDialog(context, permissionService);
+
+// Get specific fallback strategies
+final locationStrategy = PermissionFallbacks.getLocationFallbackStrategy(permissionService);
+final notificationStrategy = PermissionFallbacks.getNotificationFallbackStrategy(permissionService);
+```
+
+### Permission-Specific Fallbacks
 
 1. For location permissions:
 
    - Disable automatic location tracking
    - Allow manual location entry
+   - Limit geofencing features
 
 2. For microphone permissions:
 
    - Disable audio detection features
    - Focus on motion detection only
+   - Provide manual emergency trigger option
 
 3. For SMS permissions:
 
    - Disable automatic SMS alerts
    - Provide manual SMS sending option
+   - Use alternative communication channels if available
 
 4. For background execution:
+
    - Notify user that alerts only work when app is in foreground
    - Provide instructions on how to enable background execution
+   - Implement foreground service workarounds where possible
+
+5. For notification permissions:
+   - Display in-app alerts instead of system notifications
+   - Use visual indicators within the app
+   - Prompt users periodically to enable notifications
 
 ## Special Notes for Notification Permissions
 
@@ -181,3 +214,54 @@ On some devices, you may need to:
 
 1. Go to Settings > Apps > Emergency Alert > Permissions > Notifications
 2. Set notification permission to "Allow"
+
+## Foreground Service and BadNotificationForForegroundService Exception
+
+The BackgroundService component has been updated to properly handle foreground service notifications on all Android versions, including Android 13+.
+
+### Fix for BadNotificationForForegroundService Exception
+
+The exception was fixed by implementing the following changes:
+
+1. **Correct Notification Setup**:
+
+   ```dart
+   // First switch to foreground mode - with no parameters
+   await service.setAsForegroundService();
+
+   // Then set notification info
+   await service.setForegroundNotificationInfo(
+     title: "Emergency Alert Active",
+     content: "Monitoring for emergencies"
+   );
+   ```
+
+2. **AndroidManifest.xml Configuration**:
+   - Added proper foreground service types:
+   ```xml
+   <service
+       android:name="id.flutter.flutter_background_service.BackgroundService"
+       android:foregroundServiceType="dataSync|location"
+       android:exported="false"
+       tools:replace="android:exported" />
+   ```
+   - Added required permissions:
+   ```xml
+   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+   ```
+3. **Error Handling**: Added proper error handling to display useful diagnostics if notification setup fails:
+   ```dart
+   try {
+     // Notification setup code
+   } catch (e) {
+     print('Error setting up foreground service: $e');
+   }
+   ```
+
+If you're still experiencing issues with the foreground service notification:
+
+1. Check that notification permissions are granted
+2. Ensure battery optimization is disabled for the app
+3. On some devices, you may need to "lock" the app in recent apps list
