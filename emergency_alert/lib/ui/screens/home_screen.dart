@@ -233,37 +233,82 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (context, snapshot) {
           final remainingSeconds = snapshot.data ?? 30;
 
+          // Check if countdown has finished
+          if (remainingSeconds <= 0) {
+            // Close dialog automatically when countdown reaches 0
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (Navigator.canPop(context)) {
+                Navigator.of(context).pop();
+                _isEmergencyModalShowing = false;
+              }
+            });
+          }
+
           return AlertDialog(
             title: Text(alertType),
-            content: Text(
-              'An emergency has been detected. Emergency contacts will be notified in $remainingSeconds seconds. '
-              'Press Cancel if this is a false alarm.',
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'An emergency has been detected. Emergency contacts will be notified automatically.',
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  remainingSeconds > 0
+                      ? 'SMS will be sent in $remainingSeconds seconds'
+                      : 'Sending emergency SMS...',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: remainingSeconds <= 10 ? Colors.red : Colors.orange,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (remainingSeconds > 0)
+                  Text(
+                    'Press Cancel if this is a false alarm.',
+                    style: TextStyle(color: Colors.grey[600]),
+                  ),
+              ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () async {
-                  Navigator.of(context).pop();
-                  _isEmergencyModalShowing = false;
-                  await _emergencyService.cancelEmergency();
-                },
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () async {
-                  await _stopLocalAlert();
-                },
-                style: TextButton.styleFrom(foregroundColor: Colors.orange),
-                child: const Text('Stop Local Alert'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  Navigator.of(context).pop();
-                  _isEmergencyModalShowing = false;
-                  await _emergencyService.sendEmergencyImmediately();
-                },
-                child: const Text('Send Now'),
-              ),
-            ],
+            actions: remainingSeconds > 0
+                ? [
+                    TextButton(
+                      onPressed: () async {
+                        Navigator.of(context).pop();
+                        _isEmergencyModalShowing = false;
+                        await _emergencyService.cancelEmergency();
+                      },
+                      child: const Text('Cancel'),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        await _stopLocalAlert();
+                      },
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.orange,
+                      ),
+                      child: const Text('Stop Local Alert'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () async {
+                        Navigator.of(context).pop();
+                        _isEmergencyModalShowing = false;
+                        await _emergencyService.sendEmergencyImmediately();
+                      },
+                      child: const Text('Send Now'),
+                    ),
+                  ]
+                : [
+                    // Show only close button when countdown is finished
+                    ElevatedButton(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        _isEmergencyModalShowing = false;
+                      },
+                      child: const Text('Close'),
+                    ),
+                  ],
           );
         },
       ),
@@ -569,7 +614,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
               ),
-
               const SizedBox(height: 8), // Panic Button
               ElevatedButton.icon(
                 onPressed: () async {
@@ -583,6 +627,76 @@ class _HomeScreenState extends State<HomeScreen> {
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
+              ),
+              const SizedBox(height: 8), // Cancel Previous Alert Button
+              StreamBuilder<bool>(
+                stream: _emergencyService.emergencyActiveStream,
+                builder: (context, snapshot) {
+                  final isAllowed = _emergencyService.isCancellationAllowed;
+                  final timeRemaining =
+                      _emergencyService.cancellationTimeRemaining;
+
+                  return Column(
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: isAllowed
+                            ? () async {
+                                final success = await _emergencyService
+                                    .sendManualCancellationMessage();
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        success
+                                            ? 'Cancellation message sent to emergency contacts'
+                                            : 'Failed to send cancellation message',
+                                      ),
+                                      backgroundColor: success
+                                          ? Colors.green
+                                          : Colors.red,
+                                      duration: const Duration(seconds: 3),
+                                    ),
+                                  );
+                                }
+                              }
+                            : null,
+                        icon: const Icon(Icons.cancel),
+                        label: const Text('CANCEL PREVIOUS ALERT'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isAllowed
+                              ? Colors.orange
+                              : Colors.grey,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                        ),
+                      ),
+                      if (isAllowed && timeRemaining != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            'Available for $timeRemaining more minute${timeRemaining != 1 ? 's' : ''}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.orange[700],
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        )
+                      else if (!isAllowed)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            'No recent alert to cancel',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
               ),
 
               const SizedBox(height: 16),

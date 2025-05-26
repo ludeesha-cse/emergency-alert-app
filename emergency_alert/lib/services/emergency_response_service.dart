@@ -16,9 +16,9 @@ class EmergencyResponseService {
       EmergencyResponseService._internal();
   factory EmergencyResponseService() => _instance;
   EmergencyResponseService._internal();
-
   Timer? _emergencyCountdown;
   Alert? _currentAlert;
+  Alert? _lastSentAlert;
   bool _isEmergencyActive = false;
 
   // Stream controllers for emergency state
@@ -32,9 +32,30 @@ class EmergencyResponseService {
   Stream<Alert?> get currentAlertStream => _currentAlertController.stream;
   Stream<int> get countdownStream => _countdownController.stream;
   Stream<bool> get emergencyActiveStream => _emergencyActiveController.stream;
-
   bool get isEmergencyActive => _isEmergencyActive;
   Alert? get currentAlert => _currentAlert;
+
+  /// Check if cancellation is allowed (within 10 minutes of last sent alert)
+  bool get isCancellationAllowed {
+    if (_lastSentAlert == null) return false;
+
+    final now = DateTime.now();
+    final timeDifference = now.difference(_lastSentAlert!.timestamp);
+
+    return timeDifference.inMinutes <= 10 &&
+        _lastSentAlert!.status == AlertStatus.sent;
+  }
+
+  /// Get time remaining for cancellation (in minutes)
+  int? get cancellationTimeRemaining {
+    if (_lastSentAlert == null) return null;
+
+    final now = DateTime.now();
+    final timeDifference = now.difference(_lastSentAlert!.timestamp);
+    final remaining = 10 - timeDifference.inMinutes;
+
+    return remaining > 0 ? remaining : null;
+  }
 
   /// Trigger an emergency alert with countdown
   Future<void> triggerEmergency({
@@ -90,12 +111,16 @@ class EmergencyResponseService {
   }
 
   /// Cancel the current emergency
-  Future<void> cancelEmergency() async {
+  Future<void> cancelEmergency({bool sendCancellationMessage = false}) async {
     if (!_isEmergencyActive || _currentAlert == null) {
       return;
     }
 
     try {
+      // Immediately set emergency as inactive to prevent race conditions
+      _isEmergencyActive = false;
+      _emergencyActiveController.add(false);
+
       // Cancel countdown timer
       _emergencyCountdown?.cancel();
 
@@ -111,8 +136,9 @@ class EmergencyResponseService {
       // Save to history
       await _saveAlertToHistory(cancelledAlert);
 
-      // Send cancellation SMS if alert was already sent
-      if (_currentAlert!.status == AlertStatus.sent) {
+      // Send cancellation SMS only if explicitly requested
+      if (sendCancellationMessage &&
+          _currentAlert!.status == AlertStatus.sent) {
         await _sendCancellationSms(cancelledAlert);
       }
 
@@ -174,17 +200,30 @@ class EmergencyResponseService {
   ) async {
     int remainingSeconds = AppConstants.alertCountdownSeconds;
 
+    // Emit initial countdown value immediately
+    _countdownController.add(remainingSeconds);
     _emergencyCountdown = Timer.periodic(const Duration(seconds: 1), (
       timer,
     ) async {
+      // Check if emergency is still active (not cancelled)
+      if (!_isEmergencyActive) {
+        timer.cancel();
+        return;
+      }
+
       remainingSeconds--;
-      _countdownController.add(remainingSeconds);
 
       if (remainingSeconds <= 0) {
         timer.cancel();
+        _countdownController.add(0);
 
-        // Send emergency alerts after countdown
-        await _sendEmergencyAlerts(alert, contacts, locationInfo);
+        // Double-check emergency is still active before sending
+        if (_isEmergencyActive && _currentAlert != null) {
+          // Send emergency alerts after countdown
+          await _sendEmergencyAlerts(alert, contacts, locationInfo);
+        }
+      } else {
+        _countdownController.add(remainingSeconds);
       }
     });
   }
@@ -203,9 +242,7 @@ class EmergencyResponseService {
         contacts: contacts,
         alert: alert,
         locationInfo: locationInfo,
-      );
-
-      // Update alert status
+      ); // Update alert status
       final updatedAlert = alert.copyWith(
         status: success ? AlertStatus.sent : AlertStatus.failed,
         sentToContacts: contacts.map((c) => c.id).toList(),
@@ -213,6 +250,11 @@ class EmergencyResponseService {
 
       _currentAlert = updatedAlert;
       _currentAlertController.add(updatedAlert);
+
+      // Store last sent alert for cancellation tracking
+      if (success) {
+        _lastSentAlert = updatedAlert;
+      }
 
       // Save to history
       await _saveAlertToHistory(updatedAlert);
@@ -244,6 +286,39 @@ class EmergencyResponseService {
       );
     } catch (e) {
       LoggerService.error('Error sending cancellation SMS: $e');
+    }
+  }
+
+  /// Send manual cancellation message for previous alert
+  Future<bool> sendManualCancellationMessage() async {
+    // Check if cancellation is allowed
+    if (!isCancellationAllowed) {
+      LoggerService.warning(
+        'Cancellation not allowed - no recent alert or outside 10-minute window',
+      );
+      return false;
+    }
+
+    try {
+      final contacts = await _getEmergencyContacts();
+      if (contacts.isEmpty) {
+        LoggerService.warning('No emergency contacts configured');
+        return false;
+      }
+
+      final smsService = SmsService();
+
+      // Use the last sent alert for cancellation
+      await smsService.sendCancellationMessage(
+        contacts: contacts,
+        alert: _lastSentAlert!,
+      );
+
+      LoggerService.info('Manual cancellation message sent successfully');
+      return true;
+    } catch (e) {
+      LoggerService.error('Error sending manual cancellation SMS: $e');
+      return false;
     }
   }
 
