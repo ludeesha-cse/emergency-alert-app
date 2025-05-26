@@ -177,16 +177,38 @@ class EmergencyResponseService {
   /// Start immediate emergency response (audio, vibration, flashlight)
   Future<void> _startImmediateResponse() async {
     try {
-      final audioService = AudioService();
-      final flashlightService = FlashlightService();
-      final vibrationService = VibrationService();
+      // Check settings to see which services are enabled
+      final prefs = await SharedPreferences.getInstance();
+      final audioEnabled = prefs.getBool('audio_alerts_enabled') ?? true;
+      final vibrationEnabled = prefs.getBool('vibration_enabled') ?? true;
+      final flashlightEnabled = prefs.getBool('flashlight_enabled') ?? true;
 
-      // Start emergency alerts concurrently
-      await Future.wait([
-        audioService.playEmergencyAlarm(),
-        vibrationService.vibrateEmergency(),
-        flashlightService.startEmergencyFlashing(),
-      ]);
+      final futures = <Future>[];
+
+      // Only start enabled services
+      if (audioEnabled) {
+        final audioService = AudioService();
+        futures.add(audioService.playEmergencyAlarm());
+      }
+
+      if (vibrationEnabled) {
+        final vibrationService = VibrationService();
+        futures.add(vibrationService.vibrateEmergency());
+      }
+
+      if (flashlightEnabled) {
+        final flashlightService = FlashlightService();
+        futures.add(flashlightService.startEmergencyFlashing());
+      }
+
+      // Start enabled emergency alerts concurrently
+      if (futures.isNotEmpty) {
+        await Future.wait(futures);
+      }
+
+      LoggerService.info(
+        'Started emergency response - Audio: $audioEnabled, Vibration: $vibrationEnabled, Flashlight: $flashlightEnabled',
+      );
     } catch (e) {
       LoggerService.error('Error starting immediate response: $e');
     }
