@@ -9,6 +9,7 @@ class FlashlightService {
   bool _isFlashlightOn = false;
   bool _isFlashing = false;
   Timer? _flashTimer;
+  Timer? _flashPatternTimer;
 
   bool get isFlashlightOn => _isFlashlightOn;
   bool get isFlashing => _isFlashing;
@@ -69,17 +70,18 @@ class FlashlightService {
         await stopFlashing();
       }
 
-      _isFlashing = true;
+      _isFlashing = true; // Create flashing pattern
+      _flashPatternTimer = Timer.periodic(
+        Duration(milliseconds: flashIntervalMs),
+        (timer) async {
+          if (!_isFlashing) {
+            timer.cancel();
+            return;
+          }
 
-      // Create flashing pattern
-      Timer.periodic(Duration(milliseconds: flashIntervalMs), (timer) async {
-        if (!_isFlashing) {
-          timer.cancel();
-          return;
-        }
-
-        await toggle();
-      });
+          await toggle();
+        },
+      );
 
       // Stop flashing after duration
       _flashTimer = Timer(Duration(seconds: durationSeconds), () {
@@ -104,10 +106,8 @@ class FlashlightService {
       _isFlashing = true;
 
       // SOS pattern: ... --- ... (short-short-short long-long-long short-short-short)
-      await _flashSOSPattern();
-
-      // Repeat SOS pattern for duration
-      Timer.periodic(Duration(seconds: 3), (timer) async {
+      await _flashSOSPattern(); // Repeat SOS pattern for duration
+      _flashPatternTimer = Timer.periodic(Duration(seconds: 3), (timer) async {
         if (!_isFlashing) {
           timer.cancel();
           return;
@@ -160,6 +160,8 @@ class FlashlightService {
     try {
       _flashTimer?.cancel();
       _flashTimer = null;
+      _flashPatternTimer?.cancel();
+      _flashPatternTimer = null;
       _isFlashing = false;
 
       if (_isFlashlightOn) {

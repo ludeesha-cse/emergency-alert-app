@@ -10,6 +10,7 @@ import '../flashlight/flashlight_service.dart';
 import '../vibration/vibration_service.dart';
 import '../notification/notification_helper.dart';
 import '../logger/logger_service.dart';
+import '../emergency_state_manager.dart';
 import '../../models/alert.dart';
 import '../../models/contact.dart';
 import '../../utils/constants.dart';
@@ -24,9 +25,89 @@ class BackgroundService {
 
   bool _isRunning = false;
   bool get isRunning => _isRunning;
+  // Track active emergency responses to allow cancellation
+  static bool _isEmergencyResponseActive = false;
+  static Timer? _emergencyResponseTimer;
 
+  // Cooldown mechanism to prevent immediate re-triggering after cancellation
+  static DateTime? _lastCancellationTime;
+  static const int _cooldownMinutes = 5; // 5-minute cooldown period
   @pragma('vm:entry-point')
   BackgroundService._internal();
+
+  /// Cancel any active background emergency response
+  static Future<void> cancelBackgroundEmergency() async {
+    try {
+      LoggerService.info(
+        'Cancelling background emergency response with state coordination',
+      );
+
+      // Cancel timer first to prevent any SMS sending
+      if (_emergencyResponseTimer != null) {
+        _emergencyResponseTimer!.cancel();
+        _emergencyResponseTimer = null;
+      }
+
+      // Mark as inactive immediately
+      _isEmergencyResponseActive = false;
+
+      // Set cooldown time to prevent immediate re-triggering
+      _lastCancellationTime = DateTime.now();
+
+      // Cancel emergency in global state manager
+      EmergencyStateManager.cancelEmergency('background');
+
+      // Stop all emergency alerts
+      await Future.wait([
+        AudioService().stopAlarm(),
+        VibrationService().stopVibration(),
+        FlashlightService().stopFlashing(),
+      ]);
+
+      LoggerService.info(
+        'Background emergency response cancelled successfully with state coordination',
+      );
+    } catch (e) {
+      LoggerService.error('Error stopping background emergency alerts: $e');
+      // Ensure we still mark as inactive and start cooldown even if stopping fails
+      _isEmergencyResponseActive = false;
+      _lastCancellationTime = DateTime.now();
+      EmergencyStateManager.cancelEmergency('background');
+    }
+  }
+
+  /// Check if background emergency response is active
+  static bool get isBackgroundEmergencyActive => _isEmergencyResponseActive;
+
+  /// Check if emergency detection is currently in cooldown period
+  static bool get isInCooldownPeriod => _isInCooldownPeriod();
+
+  /// Get remaining cooldown time in minutes (for debugging/UI display)
+  static int get cooldownTimeRemainingMinutes {
+    if (_lastCancellationTime == null) return 0;
+
+    final now = DateTime.now();
+    final timeSinceCancellation = now.difference(_lastCancellationTime!);
+    final remaining = _cooldownMinutes - timeSinceCancellation.inMinutes;
+
+    return remaining > 0 ? remaining : 0;
+  }
+
+  /// Check if we're in cooldown period after cancellation
+  static bool _isInCooldownPeriod() {
+    if (_lastCancellationTime == null) return false;
+
+    final now = DateTime.now();
+    final timeSinceCancellation = now.difference(_lastCancellationTime!);
+
+    return timeSinceCancellation.inMinutes < _cooldownMinutes;
+  }
+
+  /// Reset cooldown period (for manual emergency triggers)
+  static void resetCooldown() {
+    _lastCancellationTime = null;
+    LoggerService.info('Emergency detection cooldown reset');
+  }
 
   Future<void> initialize() async {
     // Initialize the notification helper first
@@ -183,6 +264,41 @@ class BackgroundService {
       final isEnabled = prefs.getBool(AppConstants.keyAppEnabled) ?? true;
       if (!isEnabled) return;
 
+      // Check global emergency state - if emergency is active or recently cancelled, ignore
+      if (EmergencyStateManager.isGlobalEmergencyActive) {
+        LoggerService.info(
+          'Emergency already active globally, ignoring background detection',
+        );
+        return;
+      }
+
+      if (EmergencyStateManager.isEmergencyCancelled) {
+        LoggerService.info(
+          'Emergency recently cancelled, ignoring background detection',
+        );
+        return;
+      }
+
+      // Check if we're in cooldown period after recent cancellation
+      if (_isInCooldownPeriod()) {
+        final timeRemaining =
+            _cooldownMinutes -
+            DateTime.now().difference(_lastCancellationTime!).inMinutes;
+        LoggerService.info(
+          'Emergency detection blocked - in cooldown period ($timeRemaining minutes remaining)',
+        );
+        return;
+      }
+
+      // Check if enough time has passed since last cancellation for state manager
+      if (!EmergencyStateManager.canStartNewEmergency()) {
+        final timeSince = EmergencyStateManager.getTimeSinceCancellation();
+        LoggerService.info(
+          'Emergency detection blocked - state manager cooldown ($timeSince seconds since cancellation)',
+        );
+        return;
+      }
+
       // Get emergency contacts
       final contactsJson =
           prefs.getStringList(AppConstants.keyEmergencyContacts) ?? [];
@@ -208,6 +324,9 @@ class BackgroundService {
         address: location?.address,
         sensorData: SensorService().getCurrentSensorData()?.toJson(),
       );
+
+      // Mark emergency as active in global state before starting response
+      EmergencyStateManager.startEmergency(alert.id);
 
       // Save alert to history
       await _saveAlertToHistory(alert);
@@ -244,6 +363,9 @@ class BackgroundService {
     String? locationInfo,
   ) async {
     try {
+      // Mark emergency response as active
+      _isEmergencyResponseActive = true;
+
       final audioService = AudioService();
       final flashlightService = FlashlightService();
       final vibrationService = VibrationService();
@@ -256,27 +378,43 @@ class BackgroundService {
         flashlightService.startEmergencyFlashing(),
       ]);
 
-      // Wait for countdown period
-      await Future.delayed(
+      // Use a cancellable timer instead of Future.delayed
+      _emergencyResponseTimer = Timer(
         Duration(seconds: AppConstants.alertCountdownSeconds),
-      );
+        () async {
+          // Only proceed if emergency response is still active
+          if (_isEmergencyResponseActive) {
+            try {
+              // Send SMS alerts
+              await smsService.sendEmergencyAlert(
+                contacts: contacts,
+                alert: alert,
+                locationInfo: locationInfo,
+              );
 
-      // Send SMS alerts
-      await smsService.sendEmergencyAlert(
-        contacts: contacts,
-        alert: alert,
-        locationInfo: locationInfo,
-      );
+              // Update alert status
+              final updatedAlert = alert.copyWith(
+                status: AlertStatus.sent,
+                sentToContacts: contacts.map((c) => c.id).toList(),
+              );
 
-      // Update alert status
-      final updatedAlert = alert.copyWith(
-        status: AlertStatus.sent,
-        sentToContacts: contacts.map((c) => c.id).toList(),
-      );
+              await _saveAlertToHistory(updatedAlert);
 
-      await _saveAlertToHistory(updatedAlert);
+              // Clean up after sending
+              _isEmergencyResponseActive = false;
+              _emergencyResponseTimer = null;
+            } catch (e) {
+              LoggerService.error('Error sending background emergency SMS: $e');
+              _isEmergencyResponseActive = false;
+              _emergencyResponseTimer = null;
+            }
+          }
+        },
+      );
     } catch (e) {
       LoggerService.error('Error in emergency response: $e');
+      _isEmergencyResponseActive = false;
+      _emergencyResponseTimer = null;
     }
   }
 

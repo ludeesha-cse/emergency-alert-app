@@ -427,6 +427,40 @@ class _HomeScreenState extends State<HomeScreen> {
                               : Colors.orange,
                         ),
                       ),
+
+                      // Emergency Detection Cooldown Indicator
+                      if (BackgroundService.isInCooldownPeriod)
+                        Container(
+                          margin: const EdgeInsets.only(top: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.blue),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.pause_circle_outline,
+                                size: 16,
+                                color: Colors.blue,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Detection paused (${BackgroundService.cooldownTimeRemainingMinutes}m)',
+                                style: const TextStyle(
+                                  color: Colors.blue,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -593,6 +627,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   final isAllowed = _emergencyService.isCancellationAllowed;
                   final timeRemaining =
                       _emergencyService.cancellationTimeRemaining;
+                  final isActiveEmergency = _emergencyService.isEmergencyActive;
+
+                  // Dynamic button text based on emergency state
+                  final buttonText = isActiveEmergency
+                      ? 'CANCEL ACTIVE EMERGENCY'
+                      : 'CANCEL & STOP ALERTS';
 
                   return Column(
                     children: [
@@ -606,20 +646,20 @@ class _HomeScreenState extends State<HomeScreen> {
                                     SnackBar(
                                       content: Text(
                                         success
-                                            ? 'Cancellation message sent to emergency contacts'
-                                            : 'Failed to send cancellation message',
+                                            ? 'Emergency cancelled and all alerts stopped'
+                                            : 'Failed to cancel emergency',
                                       ),
                                       backgroundColor: success
                                           ? Colors.green
                                           : Colors.red,
-                                      duration: const Duration(seconds: 3),
+                                      duration: const Duration(seconds: 4),
                                     ),
                                   );
                                 }
                               }
                             : null,
                         icon: const Icon(Icons.cancel),
-                        label: const Text('CANCEL PREVIOUS ALERT'),
+                        label: Text(buttonText),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: isAllowed
                               ? Colors.orange
@@ -644,7 +684,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         Padding(
                           padding: const EdgeInsets.only(top: 4),
                           child: Text(
-                            'No recent alert to cancel',
+                            'No recent alert to cancel (or already stopped)',
                             style: TextStyle(
                               fontSize: 12,
                               color: Colors.grey[600],

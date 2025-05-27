@@ -106,7 +106,7 @@ class AudioService {
         _isPlaying = false;
       }
     } catch (e) {
-      // Handle error
+      print('Error stopping alarm: $e');
     }
   }
 
