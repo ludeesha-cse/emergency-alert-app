@@ -10,8 +10,6 @@ import 'vibration/vibration_service.dart';
 import 'sms/sms_service.dart';
 import 'location/location_service.dart';
 import 'logger/logger_service.dart';
-import 'background/background_service.dart';
-import 'emergency_state_manager.dart';
 
 class EmergencyResponseService {
   static final EmergencyResponseService _instance =
@@ -37,14 +35,8 @@ class EmergencyResponseService {
   bool get isEmergencyActive => _isEmergencyActive;
   Alert? get currentAlert => _currentAlert;
 
-  /// Check if cancellation is allowed (within 10 minutes of last sent alert OR if emergency is currently active)
+  /// Check if cancellation is allowed (within 10 minutes of last sent alert)
   bool get isCancellationAllowed {
-    // Allow cancellation if there's currently an active emergency
-    if (_isEmergencyActive && _currentAlert != null) {
-      return true;
-    }
-
-    // Allow cancellation if there's a recent sent alert within 10 minutes
     if (_lastSentAlert == null) return false;
 
     final now = DateTime.now();
@@ -76,25 +68,7 @@ class EmergencyResponseService {
       return;
     }
 
-    // Check global emergency state
-    if (EmergencyStateManager.isGlobalEmergencyActive) {
-      LoggerService.warning('Global emergency active, ignoring trigger');
-      return;
-    }
-
-    // Check if emergency was recently cancelled
-    if (EmergencyStateManager.isEmergencyCancelled) {
-      LoggerService.warning('Emergency recently cancelled, ignoring trigger');
-      return;
-    }
-
     try {
-      // Reset any emergency detection cooldown for manual triggers
-      if (alertType == AlertType.manual) {
-        BackgroundService.resetCooldown();
-        EmergencyStateManager.resetState(); // Reset state for manual trigger
-      }
-
       // Get emergency contacts
       final contacts = await _getEmergencyContacts();
       if (contacts.isEmpty) {
@@ -122,9 +96,6 @@ class EmergencyResponseService {
       _currentAlert = alert;
       _isEmergencyActive = true;
 
-      // Mark emergency as active in global state
-      EmergencyStateManager.startEmergency(alert.id);
-
       _currentAlertController.add(alert);
       _emergencyActiveController.add(true);
 
@@ -146,54 +117,36 @@ class EmergencyResponseService {
     }
 
     try {
-      LoggerService.info('Cancelling emergency with state synchronization');
-
-      // STEP 1: Mark emergency as cancelled in global state FIRST
-      EmergencyStateManager.cancelEmergency(_currentAlert!.id);
-
-      // STEP 2: Immediately mark emergency as inactive and cancel countdown
+      // Immediately set emergency as inactive to prevent race conditions
       _isEmergencyActive = false;
       _emergencyActiveController.add(false);
+
+      // Cancel countdown timer
       _emergencyCountdown?.cancel();
 
-      // STEP 3: Stop emergency responses FIRST - this is critical
+      // Stop all emergency responses
       await _stopEmergencyResponse();
 
-      // STEP 4: Cancel background emergency responses and wait for complete stop
-      await BackgroundService.cancelBackgroundEmergency();
-
-      // STEP 5: Wait a moment to ensure background service has fully stopped
-      await Future.delayed(const Duration(milliseconds: 200));
-
-      // STEP 6: Update alert status
+      // Update alert status
       final cancelledAlert = _currentAlert!.copyWith(
         status: AlertStatus.cancelled,
         resolvedAt: DateTime.now(),
       );
 
-      // STEP 7: Save to history
+      // Save to history
       await _saveAlertToHistory(cancelledAlert);
 
-      // STEP 8: Send cancellation SMS only if explicitly requested
+      // Send cancellation SMS only if explicitly requested
       if (sendCancellationMessage &&
           _currentAlert!.status == AlertStatus.sent) {
         await _sendCancellationSms(cancelledAlert);
       }
 
-      // STEP 9: Final cleanup
       await _cleanup();
 
-      LoggerService.info(
-        'Emergency cancelled successfully with state synchronization',
-      );
+      LoggerService.info('Emergency cancelled successfully');
     } catch (e) {
       LoggerService.error('Error cancelling emergency: $e');
-      // Even if there's an error, ensure we mark as inactive
-      _isEmergencyActive = false;
-      _emergencyActiveController.add(false);
-      if (_currentAlert != null) {
-        EmergencyStateManager.cancelEmergency(_currentAlert!.id);
-      }
     }
   }
 
@@ -375,48 +328,15 @@ class EmergencyResponseService {
         return false;
       }
 
-      // IMPORTANT: Stop any ongoing emergency responses first
-      // This ensures that if there are still active alarms/vibrations/flashlight
-      // from the previous alert, they get stopped when user cancels
-      await _stopEmergencyResponse();
-      await BackgroundService.cancelBackgroundEmergency();
-
-      // If there's an active emergency, mark it as cancelled
-      if (_isEmergencyActive && _currentAlert != null) {
-        _isEmergencyActive = false;
-        _emergencyActiveController.add(false);
-        _emergencyCountdown?.cancel();
-
-        final cancelledAlert = _currentAlert!.copyWith(
-          status: AlertStatus.cancelled,
-          resolvedAt: DateTime.now(),
-        );
-        _currentAlert = cancelledAlert;
-        _currentAlertController.add(cancelledAlert);
-        await _saveAlertToHistory(cancelledAlert);
-      }
-
       final smsService = SmsService();
 
-      // Use the last sent alert for cancellation (or current alert if active)
-      final alertToCancel = _currentAlert ?? _lastSentAlert!;
+      // Use the last sent alert for cancellation
       await smsService.sendCancellationMessage(
         contacts: contacts,
-        alert: alertToCancel,
+        alert: _lastSentAlert!,
       );
 
-      // Update the alert status to cancelled
-      if (_lastSentAlert != null) {
-        _lastSentAlert = _lastSentAlert!.copyWith(
-          status: AlertStatus.cancelled,
-          resolvedAt: DateTime.now(),
-        );
-        await _saveAlertToHistory(_lastSentAlert!);
-      }
-
-      LoggerService.info(
-        'Manual cancellation message sent successfully and emergency responses stopped',
-      );
+      LoggerService.info('Manual cancellation message sent successfully');
       return true;
     } catch (e) {
       LoggerService.error('Error sending manual cancellation SMS: $e');
@@ -424,11 +344,9 @@ class EmergencyResponseService {
     }
   }
 
-  /// Stop all emergency responses - both local and background services
+  /// Stop all emergency responses
   Future<void> _stopEmergencyResponse() async {
     try {
-      LoggerService.info('Stopping emergency responses');
-
       final audioService = AudioService();
       final flashlightService = FlashlightService();
       final vibrationService = VibrationService();
@@ -438,8 +356,6 @@ class EmergencyResponseService {
         flashlightService.stopFlashing(),
         vibrationService.stopVibration(),
       ]);
-
-      LoggerService.info('Emergency responses stopped');
     } catch (e) {
       LoggerService.error('Error stopping emergency response: $e');
     }

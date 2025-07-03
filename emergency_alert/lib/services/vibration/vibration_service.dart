@@ -175,6 +175,7 @@ class VibrationService {
       _vibrationTimer?.cancel();
       _vibrationTimer = null;
       _isVibrating = false;
+
       await Vibration.cancel();
     } catch (e) {
       print('Error stopping vibration: $e');
