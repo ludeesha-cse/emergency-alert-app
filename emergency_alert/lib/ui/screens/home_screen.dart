@@ -5,6 +5,10 @@ import '../../services/location/location_service.dart';
 import '../../services/background/background_service.dart';
 import '../../services/permission_service.dart';
 import '../../services/emergency_response_service.dart';
+import '../../services/audio/audio_service.dart';
+import '../../services/flashlight/flashlight_service.dart';
+import '../../services/vibration/vibration_service.dart';
+import '../../services/logger/logger_service.dart';
 import '../../utils/permission_helper.dart';
 import '../../utils/permission_fallbacks.dart';
 import '../../models/sensor_data.dart';
@@ -262,7 +266,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 8),
                 if (remainingSeconds > 0)
                   Text(
-                    'Press Cancel to stop all alerts and cancel the emergency.',
+                    'Press Cancel if this is a false alarm.',
                     style: TextStyle(color: Colors.grey[600]),
                   ),
               ],
@@ -276,6 +280,15 @@ class _HomeScreenState extends State<HomeScreen> {
                         await _emergencyService.cancelEmergency();
                       },
                       child: const Text('Cancel'),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        await _stopLocalAlert();
+                      },
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.orange,
+                      ),
+                      child: const Text('Stop Local Alert'),
                     ),
                     ElevatedButton(
                       onPressed: () async {
@@ -303,6 +316,35 @@ class _HomeScreenState extends State<HomeScreen> {
       // Ensure the flag is reset when dialog is dismissed
       _isEmergencyModalShowing = false;
     });
+  }
+
+  /// Stop local alert sounds, vibration, and flashlight without cancelling the emergency
+  Future<void> _stopLocalAlert() async {
+    try {
+      final audioService = AudioService();
+      final flashlightService = FlashlightService();
+      final vibrationService = VibrationService();
+
+      await Future.wait([
+        audioService.stopAlarm(),
+        flashlightService.stopFlashing(),
+        vibrationService.stopVibration(),
+      ]);
+
+      // Show confirmation snackbar
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Local alert stopped. Emergency countdown continues.',
+            ),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      LoggerService.error('Error stopping local alert: $e');
+    }
   }
 
   Future<void> _toggleMonitoring() async {

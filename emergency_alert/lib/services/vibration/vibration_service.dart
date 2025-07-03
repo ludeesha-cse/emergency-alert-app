@@ -30,24 +30,15 @@ class VibrationService {
 
   Future<void> vibrateEmergency({int durationSeconds = 30}) async {
     try {
-      print('VibrationService: Starting emergency vibration');
-
-      bool hasVib = await hasVibrator();
-      print('VibrationService: Device has vibrator: $hasVib');
-
-      if (!hasVib) {
-        print('VibrationService: No vibrator available');
+      if (!await hasVibrator()) {
         return;
       }
 
       if (_isVibrating) {
-        print('VibrationService: Already vibrating, stopping first');
         await stopVibration();
       }
 
       _isVibrating = true;
-      print('VibrationService: Starting vibration pattern');
-
       // Start emergency vibration pattern
       await _startPatternVibration(
         [0, 1000, 500, 1000, 500, 1000], // Emergency pattern: long-short-long
@@ -139,32 +130,16 @@ class VibrationService {
     List<int> pattern,
     int durationSeconds,
   ) async {
-    try {
-      print(
-        'VibrationService: Starting pattern vibration for $durationSeconds seconds',
-      );
-      print('VibrationService: Pattern: $pattern');
+    // Calculate pattern duration
+    final patternDuration = pattern.reduce((a, b) => a + b);
+    final cycles = (durationSeconds * 1000 / patternDuration).ceil();
 
-      // Calculate pattern duration
-      final patternDuration = pattern.reduce((a, b) => a + b);
-      final cycles = (durationSeconds * 1000 / patternDuration).ceil();
+    // Repeat pattern for specified duration
+    for (int i = 0; i < cycles && _isVibrating; i++) {
+      await Vibration.vibrate(pattern: pattern);
 
-      print(
-        'VibrationService: Pattern duration: ${patternDuration}ms, cycles: $cycles',
-      );
-
-      // Repeat pattern for specified duration
-      for (int i = 0; i < cycles && _isVibrating; i++) {
-        print('VibrationService: Starting vibration cycle ${i + 1}/$cycles');
-        await Vibration.vibrate(pattern: pattern);
-
-        // Wait for pattern to complete
-        await Future.delayed(Duration(milliseconds: patternDuration));
-      }
-
-      print('VibrationService: Pattern vibration completed');
-    } catch (e) {
-      print('Error in pattern vibration: $e');
+      // Wait for pattern to complete
+      await Future.delayed(Duration(milliseconds: patternDuration));
     }
 
     _isVibrating = false;
@@ -184,26 +159,11 @@ class VibrationService {
 
   Future<bool> testVibration() async {
     try {
-      print('VibrationService: Testing vibration...');
-
-      bool hasVib = await hasVibrator();
-      print('VibrationService: Device has vibrator: $hasVib');
-
-      if (!hasVib) {
-        print('VibrationService: No vibrator available for test');
+      if (!await hasVibrator()) {
         return false;
       }
 
-      // Try a simple vibration first
-      print('VibrationService: Attempting simple 500ms vibration');
-      await Vibration.vibrate(duration: 500);
-
-      await Future.delayed(Duration(milliseconds: 700));
-
-      // Try notification pattern
-      print('VibrationService: Attempting notification pattern');
       await vibrateNotification();
-
       return true;
     } catch (e) {
       print('Vibration test failed: $e');
