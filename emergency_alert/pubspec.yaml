@@ -34,7 +34,9 @@ dependencies:
   # UI and Material Design
   cupertino_icons: ^1.0.8
   # Sensor access (accelerometer, gyroscope)
-  sensors_plus: ^6.0.1 # Location services for GPS
+  sensors_plus: ^6.0.1
+
+  # Location services for GPS
   geolocator: ^13.0.1
   location: ^7.0.0
   geocoding: ^3.0.0

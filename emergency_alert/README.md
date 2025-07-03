@@ -36,32 +36,3 @@ lib/
     ├── constants.dart
     └── permission_helper.dart
 ```
-
-## Recent Updates
-
-### Automatic SMS Sending (Fixed)
-
-**Problem**: Previously, when a fall was detected, the app would only open the messaging app with a pre-filled message, requiring manual user intervention to send the SMS.
-
-**Solution**: Implemented a custom platform channel solution for direct SMS sending:
-
-- **Platform Channel Implementation**: Custom Android integration using `SmsManager` for direct SMS sending
-- **Automatic Emergency Alerts**: SMS messages are now sent automatically without user intervention
-- **Fallback Support**: If platform channel fails, the app falls back to the original messaging app method
-- **Multiple Recipients**: Sends to all enabled emergency contacts simultaneously
-- **Real-time Sending**: Emergency SMS is sent immediately when fall detection triggers
-- **Long Message Support**: Automatically handles multipart SMS for longer messages
-
-**Technical Details**:
-
-- Custom `MethodChannel` implementation replacing third-party packages
-- Android `SmsManager` integration for reliable SMS delivery
-- Comprehensive error handling and logging
-- No external dependencies for SMS functionality
-
-**Benefits**:
-
-- True hands-free emergency response
-- No manual intervention required during emergencies
-- Reliable delivery with fallback mechanism
-- Faster emergency response time

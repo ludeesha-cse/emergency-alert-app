@@ -1,5 +1,4 @@
 ﻿import 'dart:async';
-import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../models/contact.dart';
@@ -10,14 +9,10 @@ class SmsService {
   factory SmsService() => _instance;
   SmsService._internal();
 
-  // Platform channel for SMS sending
-  static const MethodChannel _channel = MethodChannel(
-    'com.emergency_alert/sms',
-  );
-
   final StreamController<bool> _smsSentController =
       StreamController<bool>.broadcast();
   Stream<bool> get smsSentStream => _smsSentController.stream;
+
   Future<bool> checkPermissions() async {
     try {
       final status = await Permission.sms.request();
@@ -28,23 +23,7 @@ class SmsService {
     }
   }
 
-  /// Send SMS directly using platform channel
-  Future<bool> _sendDirectSMS({
-    required String message,
-    required List<String> phoneNumbers,
-  }) async {
-    try {
-      final result = await _channel.invokeMethod('sendSMS', {
-        'message': message,
-        'phoneNumbers': phoneNumbers,
-      });
-      return result == true;
-    } catch (e) {
-      print("Error sending direct SMS: $e");
-      return false;
-    }
-  } // Added for ContactsScreen
-
+  // Added for ContactsScreen
   Future<bool> sendTestMessage(
     EmergencyContact contact,
     String userName,
@@ -59,33 +38,16 @@ class SmsService {
       final message =
           "This is a test message from $userName''s Emergency Alert app.";
 
-      try {
-        // Try to send SMS directly using platform channel
-        final success = await _sendDirectSMS(
-          message: message,
-          phoneNumbers: [contact.phoneNumber],
-        );
+      final url = Uri.parse(
+        "sms:${contact.phoneNumber}?body=${Uri.encodeComponent(message)}",
+      );
 
-        if (success) {
-          print("Test SMS sent to ${contact.name}");
-          return true;
-        } else {
-          throw Exception("Platform channel SMS failed");
-        }
-      } catch (e) {
-        print("Error sending direct SMS: $e");
-        // Fallback to URL launcher method
-        final url = Uri.parse(
-          "sms:${contact.phoneNumber}?body=${Uri.encodeComponent(message)}",
-        );
-
-        if (await canLaunchUrl(url)) {
-          await launchUrl(url);
-          return true;
-        } else {
-          print("Could not launch SMS app for ${contact.name}");
-          return false;
-        }
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url);
+        return true;
+      } else {
+        print("Could not launch SMS app for ${contact.name}");
+        return false;
       }
     } catch (e) {
       print("Error sending test SMS: $e");
@@ -125,46 +87,22 @@ class SmsService {
       );
 
       bool allSent = true;
-      final phoneNumbers = contacts
-          .where((c) => c.isEnabled)
-          .map((c) => c.phoneNumber)
-          .toList();
+      for (final contact in contacts.where((c) => c.isEnabled)) {
+        try {
+          // Use URL launcher to send SMS
+          final url = Uri.parse(
+            "sms:${contact.phoneNumber}?body=${Uri.encodeComponent(message)}",
+          );
 
-      if (phoneNumbers.isEmpty) {
-        print("No enabled contacts found");
-        return false;
-      }
-      try {
-        // Try to send SMS directly using platform channel
-        final success = await _sendDirectSMS(
-          message: message,
-          phoneNumbers: phoneNumbers,
-        );
-
-        if (success) {
-          print("Emergency SMS sent to ${phoneNumbers.length} contacts");
-        } else {
-          throw Exception("Platform channel SMS failed");
-        }
-      } catch (e) {
-        print("Error sending direct SMS: $e");
-        // Fallback to URL launcher method if direct sending fails
-        for (final contact in contacts.where((c) => c.isEnabled)) {
-          try {
-            final url = Uri.parse(
-              "sms:${contact.phoneNumber}?body=${Uri.encodeComponent(message)}",
-            );
-
-            if (await canLaunchUrl(url)) {
-              await launchUrl(url);
-            } else {
-              print("Could not launch SMS app for ${contact.name}");
-              allSent = false;
-            }
-          } catch (e) {
-            print("Error sending SMS to ${contact.name}: $e");
+          if (await canLaunchUrl(url)) {
+            await launchUrl(url);
+          } else {
+            print("Could not launch SMS app for ${contact.name}");
             allSent = false;
           }
+        } catch (e) {
+          print("Error sending SMS to ${contact.name}: $e");
+          allSent = false;
         }
       }
 
@@ -247,46 +185,21 @@ class SmsService {
       final message = _buildCancellationMessage(alert);
 
       bool allSent = true;
-      final phoneNumbers = contacts
-          .where((c) => c.isEnabled)
-          .map((c) => c.phoneNumber)
-          .toList();
+      for (final contact in contacts.where((c) => c.isEnabled)) {
+        try {
+          final url = Uri.parse(
+            "sms:${contact.phoneNumber}?body=${Uri.encodeComponent(message)}",
+          );
 
-      if (phoneNumbers.isEmpty) {
-        print("No enabled contacts found");
-        return false;
-      }
-      try {
-        // Try to send SMS directly using platform channel
-        final success = await _sendDirectSMS(
-          message: message,
-          phoneNumbers: phoneNumbers,
-        );
-
-        if (success) {
-          print("Cancellation SMS sent to ${phoneNumbers.length} contacts");
-        } else {
-          throw Exception("Platform channel SMS failed");
-        }
-      } catch (e) {
-        print("Error sending direct cancellation SMS: $e");
-        // Fallback to URL launcher method
-        for (final contact in contacts.where((c) => c.isEnabled)) {
-          try {
-            final url = Uri.parse(
-              "sms:${contact.phoneNumber}?body=${Uri.encodeComponent(message)}",
-            );
-
-            if (await canLaunchUrl(url)) {
-              await launchUrl(url);
-            } else {
-              print("Could not launch SMS app for ${contact.name}");
-              allSent = false;
-            }
-          } catch (e) {
-            print("Error sending cancellation SMS to ${contact.name}: $e");
+          if (await canLaunchUrl(url)) {
+            await launchUrl(url);
+          } else {
+            print("Could not launch SMS app for ${contact.name}");
             allSent = false;
           }
+        } catch (e) {
+          print("Error sending cancellation SMS to ${contact.name}: $e");
+          allSent = false;
         }
       }
 
