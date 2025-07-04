@@ -21,31 +21,50 @@ class AudioService {
         await stopAlarm();
       }
 
-      // Use system alarm sound or a default beep pattern
-      await _audioPlayer.setVolume(volume);
-      await _audioPlayer.setLoopMode(LoopMode.one);
-
-      _isPlaying = true;
-
-      // Create a simple beep pattern as fallback
-      _startBeepPattern();
+      // Try to play an actual audio file first
+      try {
+        await _audioPlayer.setAsset('assets/audio/emergency_siren.mp3');
+        await _audioPlayer.setVolume(volume);
+        await _audioPlayer.setLoopMode(LoopMode.one);
+        await _audioPlayer.play();
+        _isPlaying = true;
+      } catch (audioFileError) {
+        // If audio file fails, fall back to beep pattern
+        print('Audio file failed, using beep pattern: $audioFileError');
+        _isPlaying = true;
+        _startBeepPattern();
+      }
 
       // Stop alarm after specified duration
       _alarmTimer = Timer(Duration(seconds: durationSeconds), () {
         stopAlarm();
       });
     } catch (e) {
+      print('Error in playEmergencyAlarm: $e');
       _isPlaying = false;
     }
   }
 
   void _startBeepPattern() {
-    // Simple implementation - in a real app you'd load audio files
+    // Create a simple beep pattern using periodic timer and volume changes
     Timer.periodic(const Duration(milliseconds: 500), (timer) {
       if (!_isPlaying) {
         timer.cancel();
+        return;
       }
-      // Beep pattern would go here
+
+      // Create a beep by quickly changing volume
+      try {
+        _audioPlayer.setVolume(0.0);
+        Future.delayed(const Duration(milliseconds: 50), () {
+          if (_isPlaying) {
+            _audioPlayer.setVolume(0.8);
+          }
+        });
+      } catch (e) {
+        // If this fails, at least the timer indicates beeping
+        print('Beep pattern error: $e');
+      }
     });
   }
 

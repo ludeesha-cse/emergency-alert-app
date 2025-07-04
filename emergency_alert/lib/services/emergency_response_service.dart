@@ -151,16 +151,27 @@ class EmergencyResponseService {
   /// Start immediate emergency response (audio, vibration, flashlight)
   Future<void> _startImmediateResponse() async {
     try {
+      LoggerService.info('Starting immediate emergency response...');
+
       final audioService = AudioService();
       final flashlightService = FlashlightService();
       final vibrationService = VibrationService();
 
-      // Start emergency alerts concurrently
-      await Future.wait([
-        audioService.playEmergencyAlarm(),
-        vibrationService.vibrateEmergency(),
-        flashlightService.startEmergencyFlashing(),
-      ]);
+      // Start each service immediately without waiting for others
+      // This ensures maximum speed
+      audioService.playEmergencyAlarm().catchError((e) {
+        LoggerService.error('Audio service error: $e');
+      });
+
+      vibrationService.vibrateEmergency().catchError((e) {
+        LoggerService.error('Vibration service error: $e');
+      });
+
+      flashlightService.startEmergencyFlashing().catchError((e) {
+        LoggerService.error('Flashlight service error: $e');
+      });
+
+      LoggerService.info('Emergency response services started');
     } catch (e) {
       LoggerService.error('Error starting immediate response: $e');
     }
@@ -322,6 +333,80 @@ class EmergencyResponseService {
       customMessage: 'Manual emergency button pressed',
       severity: AlertSeverity.critical,
     );
+  }
+
+  /// Immediate manual emergency trigger (for panic button - starts local alerts immediately)
+  Future<void> triggerImmediateManualEmergency() async {
+    if (_isEmergencyActive) {
+      LoggerService.warning('Emergency already active, ignoring trigger');
+      return;
+    }
+
+    try {
+      LoggerService.info(
+        'Panic button triggered - starting immediate response',
+      );
+
+      // Create a temporary alert immediately for immediate response
+      final tempAlert = Alert(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        type: AlertType.manual,
+        severity: AlertSeverity.critical,
+        status: AlertStatus.triggered,
+        timestamp: DateTime.now(),
+        customMessage: 'Panic button pressed - immediate assistance needed',
+      );
+
+      _currentAlert = tempAlert;
+      _isEmergencyActive = true;
+
+      // Immediately broadcast the emergency state and start countdown
+      _currentAlertController.add(tempAlert);
+      _emergencyActiveController.add(true);
+      _countdownController.add(AppConstants.alertCountdownSeconds);
+
+      // Start immediate emergency response (audio, vibration, flashlight) FIRST
+      await _startImmediateResponse();
+
+      // Now get contacts and location in background (this can take time)
+      _handleBackgroundDataGathering(tempAlert);
+    } catch (e) {
+      LoggerService.error('Error triggering immediate manual emergency: $e');
+      await _cleanup();
+    }
+  }
+
+  /// Handle background data gathering for immediate emergency
+  Future<void> _handleBackgroundDataGathering(Alert tempAlert) async {
+    try {
+      // Get emergency contacts
+      final contacts = await _getEmergencyContacts();
+      if (contacts.isEmpty) {
+        LoggerService.warning('No emergency contacts configured');
+        // Still keep the emergency active for local alerts
+        return;
+      }
+
+      // Get current location
+      final locationService = LocationService();
+      final location = await locationService.getLocationWithAddress();
+
+      // Update alert with location data
+      final updatedAlert = tempAlert.copyWith(
+        latitude: location?.latitude,
+        longitude: location?.longitude,
+        address: location?.address,
+      );
+
+      _currentAlert = updatedAlert;
+      _currentAlertController.add(updatedAlert);
+
+      // Start countdown for UI display
+      await _startCountdown(updatedAlert, contacts, location?.address);
+    } catch (e) {
+      LoggerService.error('Error in background data gathering: $e');
+      // Continue with basic alert even if data gathering fails
+    }
   }
 
   /// Dispose service and clean up

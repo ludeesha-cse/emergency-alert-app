@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dart:async';
 import '../../services/sensor/sensor_service.dart';
 import '../../services/location/location_service.dart';
 import '../../services/background/background_service.dart';
@@ -225,6 +226,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     _isEmergencyModalShowing = true;
 
+    // Check if this is a panic button activation
+    final isPanicButton = alertType == 'Panic Button Activated';
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -236,8 +240,11 @@ class _HomeScreenState extends State<HomeScreen> {
           return AlertDialog(
             title: Text(alertType),
             content: Text(
-              'An emergency has been detected. Emergency contacts will be notified in $remainingSeconds seconds. '
-              'Press Cancel if this is a false alarm.',
+              isPanicButton
+                  ? 'Panic button activated! Emergency alerts are sounding. Emergency contacts will be notified in $remainingSeconds seconds. '
+                        'Press "Send Now" to notify immediately or "Cancel" if this was accidental.'
+                  : 'An emergency has been detected. Emergency contacts will be notified in $remainingSeconds seconds. '
+                        'Press Cancel if this is a false alarm.',
             ),
             actions: [
               TextButton(
@@ -261,6 +268,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   _isEmergencyModalShowing = false;
                   await _emergencyService.sendEmergencyImmediately();
                 },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isPanicButton ? Colors.red : null,
+                ),
                 child: const Text('Send Now'),
               ),
             ],
@@ -572,9 +582,32 @@ class _HomeScreenState extends State<HomeScreen> {
 
               const SizedBox(height: 8), // Panic Button
               ElevatedButton.icon(
-                onPressed: () async {
-                  await _emergencyService.triggerManualEmergency();
+                onPressed: () {
+                  print(
+                    '🚨 PANIC BUTTON PRESSED - Starting immediate response',
+                  );
+
+                  // Show immediate feedback
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('🚨 PANIC BUTTON ACTIVATED! 🚨'),
+                      backgroundColor: Colors.red,
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+
+                  // Show popup immediately
                   _showEmergencyAlert('Panic Button Activated');
+
+                  // Trigger immediate emergency response with local alerts in parallel
+                  _emergencyService
+                      .triggerImmediateManualEmergency()
+                      .then((_) {
+                        print('✅ Emergency service triggered');
+                      })
+                      .catchError((e) {
+                        print('❌ Error triggering emergency service: $e');
+                      });
                 },
                 icon: const Icon(Icons.warning),
                 label: const Text('PANIC BUTTON'),
