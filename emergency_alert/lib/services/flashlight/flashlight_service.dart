@@ -158,6 +158,7 @@ class FlashlightService {
 
   Future<void> stopFlashing() async {
     try {
+      print('🔦 Stopping flashlight flashing...');
       _flashTimer?.cancel();
       _flashTimer = null;
       _isFlashing = false;
@@ -165,8 +166,9 @@ class FlashlightService {
       if (_isFlashlightOn) {
         await turnOff();
       }
+      print('✅ Flashlight flashing stopped');
     } catch (e) {
-      print('Error stopping flashing: $e');
+      print('❌ Error stopping flashing: $e');
     }
   }
 

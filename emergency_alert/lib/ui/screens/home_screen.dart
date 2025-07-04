@@ -6,9 +6,6 @@ import '../../services/location/location_service.dart';
 import '../../services/background/background_service.dart';
 import '../../services/permission_service.dart';
 import '../../services/emergency_response_service.dart';
-import '../../services/audio/audio_service.dart';
-import '../../services/flashlight/flashlight_service.dart';
-import '../../services/vibration/vibration_service.dart';
 import '../../services/logger/logger_service.dart';
 import '../../utils/permission_helper.dart';
 import '../../utils/permission_fallbacks.dart';
@@ -24,6 +21,10 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  // GlobalKey for ScaffoldMessenger to avoid widget deactivation issues
+  final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey =
+      GlobalKey<ScaffoldMessengerState>();
+
   final SensorService _sensorService = SensorService();
   final LocationService _locationService = LocationService();
   final BackgroundService _backgroundService = BackgroundService();
@@ -241,22 +242,43 @@ class _HomeScreenState extends State<HomeScreen> {
             title: Text(alertType),
             content: Text(
               isPanicButton
-                  ? 'Panic button activated! Emergency alerts are sounding. Emergency contacts will be notified in $remainingSeconds seconds. '
-                        'Press "Send Now" to notify immediately or "Cancel" if this was accidental.'
-                  : 'An emergency has been detected. Emergency contacts will be notified in $remainingSeconds seconds. '
-                        'Press Cancel if this is a false alarm.',
+                  ? 'Panic button activated! Emergency alerts are sounding. Emergency contacts will be notified in $remainingSeconds seconds.\n\n'
+                        '• Press "Send Now" to notify immediately\n'
+                        '• Press "Stop Local Alert" to silence alarms but keep countdown\n'
+                        '• Press "Cancel" if this was accidental'
+                  : 'An emergency has been detected! Emergency alerts are sounding. Emergency contacts will be notified in $remainingSeconds seconds.\n\n'
+                        '• Press "Send Now" to notify immediately\n'
+                        '• Press "Stop Local Alert" to silence alarms but keep countdown\n'
+                        '• Press "Cancel" if this is a false alarm',
             ),
             actions: [
               TextButton(
                 onPressed: () async {
+                  print('🛑 Emergency cancelled by user');
                   Navigator.of(context).pop();
                   _isEmergencyModalShowing = false;
                   await _emergencyService.cancelEmergency();
+
+                  // Show immediate feedback - use a delay to avoid widget deactivation
+                  Future.delayed(const Duration(milliseconds: 100), () {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Emergency cancelled. All alerts stopped.',
+                          ),
+                          backgroundColor: Colors.green,
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  });
                 },
                 child: const Text('Cancel'),
               ),
               TextButton(
                 onPressed: () async {
+                  print('🔇 Stopping local alerts only');
                   await _stopLocalAlert();
                 },
                 style: TextButton.styleFrom(foregroundColor: Colors.orange),
@@ -286,29 +308,56 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Stop local alert sounds, vibration, and flashlight without cancelling the emergency
   Future<void> _stopLocalAlert() async {
     try {
-      final audioService = AudioService();
-      final flashlightService = FlashlightService();
-      final vibrationService = VibrationService();
+      print('🔇 User requested to stop local alerts');
 
-      await Future.wait([
-        audioService.stopAlarm(),
-        flashlightService.stopFlashing(),
-        vibrationService.stopVibration(),
-      ]);
+      // Use the emergency service's centralized method to stop local alerts
+      await _emergencyService.stopLocalAlerts();
 
-      // Show confirmation snackbar
+      // Force a second emergency reset after a short delay to catch any lingering audio
+      await Future.delayed(const Duration(milliseconds: 200));
+      await _emergencyService.stopLocalAlerts();
+
+      // Show confirmation snackbar using the global key to avoid widget deactivation issues
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Local alert stopped. Emergency countdown continues.',
-            ),
-            duration: Duration(seconds: 3),
-          ),
+        // Use safe snackbar display method
+        _showSafeSnackBar(
+          'Local alert stopped. Emergency countdown continues.',
+          duration: const Duration(seconds: 3),
         );
       }
     } catch (e) {
       LoggerService.error('Error stopping local alert: $e');
+
+      // Even if there was an error, try one more emergency reset
+      try {
+        await _emergencyService.stopLocalAlerts();
+      } catch (_) {}
+    }
+  }
+
+  // Helper method to safely show snackbars using the global key
+  void _showSafeSnackBar(String message, {Duration? duration}) {
+    try {
+      // If context is still valid, use direct context method
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            duration: duration ?? const Duration(seconds: 2),
+          ),
+        );
+      } else {
+        // Fallback to global key if context is no longer valid
+        _scaffoldMessengerKey.currentState?.showSnackBar(
+          SnackBar(
+            content: Text(message),
+            duration: duration ?? const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      // Last resort fallback if both methods fail
+      print('⚠️ Could not show snackbar: $e');
     }
   }
 
@@ -386,240 +435,243 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Emergency Alert'),
-        backgroundColor: _isMonitoring ? Colors.green : Colors.red,
-        foregroundColor: Colors.white,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Status Card
-              Card(
-                elevation: 4,
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      Icon(
-                        _isMonitoring
-                            ? Icons.security
-                            : Icons.security_outlined,
-                        size: 48,
-                        color: _isMonitoring ? Colors.green : Colors.red,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _isMonitoring
-                            ? 'Monitoring Active'
-                            : 'Monitoring Inactive',
-                        style: Theme.of(context).textTheme.headlineSmall,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _hasPermissions
-                            ? (_notificationsEnabled
-                                  ? 'All permissions granted'
-                                  : 'Limited functionality - Notifications disabled')
-                            : 'Permissions required',
-                        style: TextStyle(
-                          color: _hasPermissions
-                              ? (_notificationsEnabled
-                                    ? Colors.green
-                                    : Colors.orange)
-                              : Colors.orange,
+    return ScaffoldMessenger(
+      key: _scaffoldMessengerKey,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Emergency Alert'),
+          backgroundColor: _isMonitoring ? Colors.green : Colors.red,
+          foregroundColor: Colors.white,
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Status Card
+                Card(
+                  elevation: 4,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      children: [
+                        Icon(
+                          _isMonitoring
+                              ? Icons.security
+                              : Icons.security_outlined,
+                          size: 48,
+                          color: _isMonitoring ? Colors.green : Colors.red,
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 8),
+                        Text(
+                          _isMonitoring
+                              ? 'Monitoring Active'
+                              : 'Monitoring Inactive',
+                          style: Theme.of(context).textTheme.headlineSmall,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _hasPermissions
+                              ? (_notificationsEnabled
+                                    ? 'All permissions granted'
+                                    : 'Limited functionality - Notifications disabled')
+                              : 'Permissions required',
+                          style: TextStyle(
+                            color: _hasPermissions
+                                ? (_notificationsEnabled
+                                      ? Colors.green
+                                      : Colors.orange)
+                                : Colors.orange,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
 
-              // Show notification warning banner if needed
-              if (!_notificationsEnabled)
+                // Show notification warning banner if needed
+                if (!_notificationsEnabled)
+                  Card(
+                    margin: const EdgeInsets.only(top: 16),
+                    color: Colors.amber.shade100,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.notification_important,
+                                color: Colors.amber.shade800,
+                              ),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'Notifications Disabled',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Emergency alerts may not work properly. Background monitoring and alerts require notification permission.',
+                            style: TextStyle(fontSize: 13),
+                          ),
+                          const SizedBox(height: 8),
+                          OutlinedButton(
+                            onPressed: () {
+                              _showNotificationPermissionDialog();
+                            },
+                            child: const Text('Enable Notifications'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                const SizedBox(height: 16), // Sensor Data Card
                 Card(
-                  margin: const EdgeInsets.only(top: 16),
-                  color: Colors.amber.shade100,
+                  elevation: 4,
                   child: Padding(
-                    padding: const EdgeInsets.all(12.0),
+                    padding: const EdgeInsets.all(16.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.notification_important,
-                              color: Colors.amber.shade800,
-                            ),
-                            const SizedBox(width: 8),
-                            const Text(
-                              'Notifications Disabled',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                          ],
+                        Text(
+                          'Sensor Data',
+                          style: Theme.of(context).textTheme.titleMedium,
                         ),
                         const SizedBox(height: 8),
-                        const Text(
-                          'Emergency alerts may not work properly. Background monitoring and alerts require notification permission.',
-                          style: TextStyle(fontSize: 13),
-                        ),
-                        const SizedBox(height: 8),
-                        OutlinedButton(
-                          onPressed: () {
-                            _showNotificationPermissionDialog();
-                          },
-                          child: const Text('Enable Notifications'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-              const SizedBox(height: 16), // Sensor Data Card
-              Card(
-                elevation: 4,
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Sensor Data',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 8),
-                      if (_currentSensorData != null) ...[
-                        Text(
-                          'Magnitude: ${_currentSensorData!.magnitude.toStringAsFixed(2)}G',
-                        ),
-                        Text(
-                          'Accelerometer: (${_currentSensorData!.accelerometerX.toStringAsFixed(2)}, ${_currentSensorData!.accelerometerY.toStringAsFixed(2)}, ${_currentSensorData!.accelerometerZ.toStringAsFixed(2)})',
-                        ),
-                        Text(
-                          'Gyroscope: (${_currentSensorData!.gyroscopeX.toStringAsFixed(2)}, ${_currentSensorData!.gyroscopeY.toStringAsFixed(2)}, ${_currentSensorData!.gyroscopeZ.toStringAsFixed(2)})',
-                        ),
-                      ] else ...[
-                        Text(
-                          'No sensor data available',
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                        const Text(
-                          'Start monitoring to see real-time sensor readings',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 16), // Location Data Card
-              Card(
-                elevation: 4,
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Location',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 8),
-                      if (_currentLocation != null) ...[
-                        Text(
-                          'Lat: ${_currentLocation!.latitude.toStringAsFixed(6)}',
-                        ),
-                        Text(
-                          'Lng: ${_currentLocation!.longitude.toStringAsFixed(6)}',
-                        ),
-                        if (_currentLocation!.address != null)
-                          Text('Address: ${_currentLocation!.address}'),
-                        if (_currentLocation!.accuracy != null)
+                        if (_currentSensorData != null) ...[
                           Text(
-                            'Accuracy: ${_currentLocation!.accuracy!.toStringAsFixed(1)}m',
+                            'Magnitude: ${_currentSensorData!.magnitude.toStringAsFixed(2)}G',
                           ),
-                      ] else ...[
-                        Text(
-                          'No location data available',
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontStyle: FontStyle.italic,
+                          Text(
+                            'Accelerometer: (${_currentSensorData!.accelerometerX.toStringAsFixed(2)}, ${_currentSensorData!.accelerometerY.toStringAsFixed(2)}, ${_currentSensorData!.accelerometerZ.toStringAsFixed(2)})',
                           ),
-                        ),
-                        const Text(
-                          'Start monitoring to see current location',
-                          style: TextStyle(fontSize: 12),
-                        ),
+                          Text(
+                            'Gyroscope: (${_currentSensorData!.gyroscopeX.toStringAsFixed(2)}, ${_currentSensorData!.gyroscopeY.toStringAsFixed(2)}, ${_currentSensorData!.gyroscopeZ.toStringAsFixed(2)})',
+                          ),
+                        ] else ...[
+                          Text(
+                            'No sensor data available',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                          const Text(
+                            'Start monitoring to see real-time sensor readings',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
-              ),
 
-              const SizedBox(height: 24),
-
-              // Control Buttons
-              ElevatedButton.icon(
-                onPressed: _toggleMonitoring,
-                icon: Icon(_isMonitoring ? Icons.stop : Icons.play_arrow),
-                label: Text(
-                  _isMonitoring ? 'Stop Monitoring' : 'Start Monitoring',
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _isMonitoring ? Colors.red : Colors.green,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-              ),
-
-              const SizedBox(height: 8), // Panic Button
-              ElevatedButton.icon(
-                onPressed: () {
-                  print(
-                    '🚨 PANIC BUTTON PRESSED - Starting immediate response',
-                  );
-
-                  // Show immediate feedback
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('🚨 PANIC BUTTON ACTIVATED! 🚨'),
-                      backgroundColor: Colors.red,
-                      duration: Duration(seconds: 2),
+                const SizedBox(height: 16), // Location Data Card
+                Card(
+                  elevation: 4,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Location',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        if (_currentLocation != null) ...[
+                          Text(
+                            'Lat: ${_currentLocation!.latitude.toStringAsFixed(6)}',
+                          ),
+                          Text(
+                            'Lng: ${_currentLocation!.longitude.toStringAsFixed(6)}',
+                          ),
+                          if (_currentLocation!.address != null)
+                            Text('Address: ${_currentLocation!.address}'),
+                          if (_currentLocation!.accuracy != null)
+                            Text(
+                              'Accuracy: ${_currentLocation!.accuracy!.toStringAsFixed(1)}m',
+                            ),
+                        ] else ...[
+                          Text(
+                            'No location data available',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                          const Text(
+                            'Start monitoring to see current location',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        ],
+                      ],
                     ),
-                  );
-
-                  // Show popup immediately
-                  _showEmergencyAlert('Panic Button Activated');
-
-                  // Trigger immediate emergency response with local alerts in parallel
-                  _emergencyService
-                      .triggerImmediateManualEmergency()
-                      .then((_) {
-                        print('✅ Emergency service triggered');
-                      })
-                      .catchError((e) {
-                        print('❌ Error triggering emergency service: $e');
-                      });
-                },
-                icon: const Icon(Icons.warning),
-                label: const Text('PANIC BUTTON'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
                 ),
-              ),
 
-              const SizedBox(height: 16),
-            ],
+                const SizedBox(height: 24),
+
+                // Control Buttons
+                ElevatedButton.icon(
+                  onPressed: _toggleMonitoring,
+                  icon: Icon(_isMonitoring ? Icons.stop : Icons.play_arrow),
+                  label: Text(
+                    _isMonitoring ? 'Stop Monitoring' : 'Start Monitoring',
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _isMonitoring ? Colors.red : Colors.green,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                ),
+
+                const SizedBox(height: 8), // Panic Button
+                ElevatedButton.icon(
+                  onPressed: () {
+                    print(
+                      '🚨 PANIC BUTTON PRESSED - Starting immediate response',
+                    );
+
+                    // Show immediate feedback
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('🚨 PANIC BUTTON ACTIVATED! 🚨'),
+                        backgroundColor: Colors.red,
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+
+                    // Show popup immediately
+                    _showEmergencyAlert('Panic Button Activated');
+
+                    // Trigger immediate emergency response with local alerts in parallel
+                    _emergencyService
+                        .triggerImmediateManualEmergency()
+                        .then((_) {
+                          print('✅ Emergency service triggered');
+                        })
+                        .catchError((e) {
+                          print('❌ Error triggering emergency service: $e');
+                        });
+                  },
+                  icon: const Icon(Icons.warning),
+                  label: const Text('PANIC BUTTON'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+              ],
+            ),
           ),
         ),
       ),
@@ -627,9 +679,28 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   @override
+  void deactivate() {
+    // This is called when the widget is removed from the widget tree
+    // It's a good place to force emergency reset in case there are any ongoing alerts
+    super.deactivate();
+    if (_emergencyService.isEmergencyActive) {
+      try {
+        LoggerService.warning(
+          'Detected widget deactivation with active emergency - forcing stop',
+        );
+        _emergencyService.stopLocalAlerts();
+      } catch (e) {
+        LoggerService.error('Error during deactivate emergency stop: $e');
+      }
+    }
+  }
+
+  @override
   void dispose() {
     _sensorService.dispose();
     _locationService.dispose();
+    // Ensure any active emergency alerts are stopped
+    _emergencyService.stopLocalAlerts().catchError((_) {});
     super.dispose();
   }
 }

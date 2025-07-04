@@ -147,13 +147,15 @@ class VibrationService {
 
   Future<void> stopVibration() async {
     try {
+      print('📳 Stopping vibration...');
       _vibrationTimer?.cancel();
       _vibrationTimer = null;
       _isVibrating = false;
 
       await Vibration.cancel();
+      print('✅ Vibration stopped');
     } catch (e) {
-      print('Error stopping vibration: $e');
+      print('❌ Error stopping vibration: $e');
     }
   }
 

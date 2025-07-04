@@ -21,6 +21,11 @@ class EmergencyResponseService {
   Alert? _currentAlert;
   bool _isEmergencyActive = false;
 
+  // Service instances for proper cleanup
+  final AudioService _audioService = AudioService();
+  final FlashlightService _flashlightService = FlashlightService();
+  final VibrationService _vibrationService = VibrationService();
+
   // Stream controllers for emergency state
   final StreamController<Alert?> _currentAlertController =
       StreamController<Alert?>.broadcast();
@@ -96,10 +101,12 @@ class EmergencyResponseService {
     }
 
     try {
-      // Cancel countdown timer
+      LoggerService.info('Emergency cancelled by user');
+
+      // Cancel countdown timer immediately
       _emergencyCountdown?.cancel();
 
-      // Stop all emergency responses
+      // Stop all emergency responses immediately
       await _stopEmergencyResponse();
 
       // Update alert status
@@ -118,7 +125,9 @@ class EmergencyResponseService {
 
       await _cleanup();
 
-      LoggerService.info('Emergency cancelled successfully');
+      LoggerService.info(
+        'Emergency cancelled successfully - all alerts stopped',
+      );
     } catch (e) {
       LoggerService.error('Error cancelling emergency: $e');
     }
@@ -153,23 +162,36 @@ class EmergencyResponseService {
     try {
       LoggerService.info('Starting immediate emergency response...');
 
-      final audioService = AudioService();
-      final flashlightService = FlashlightService();
-      final vibrationService = VibrationService();
+      // Start each service and wait for them to actually start
+      // This ensures they're properly initialized before we can stop them
+      final List<Future> serviceFutures = [];
 
-      // Start each service immediately without waiting for others
-      // This ensures maximum speed
-      audioService.playEmergencyAlarm().catchError((e) {
-        LoggerService.error('Audio service error: $e');
-      });
+      serviceFutures.add(
+        _audioService.playEmergencyAlarm().catchError((e) {
+          LoggerService.error('Audio service error: $e');
+        }),
+      );
 
-      vibrationService.vibrateEmergency().catchError((e) {
-        LoggerService.error('Vibration service error: $e');
-      });
+      serviceFutures.add(
+        _vibrationService.vibrateEmergency().catchError((e) {
+          LoggerService.error('Vibration service error: $e');
+        }),
+      );
 
-      flashlightService.startEmergencyFlashing().catchError((e) {
-        LoggerService.error('Flashlight service error: $e');
-      });
+      serviceFutures.add(
+        _flashlightService.startEmergencyFlashing().catchError((e) {
+          LoggerService.error('Flashlight service error: $e');
+        }),
+      );
+
+      // Wait for all services to start (with timeout)
+      await Future.wait(serviceFutures).timeout(
+        const Duration(seconds: 2),
+        onTimeout: () {
+          LoggerService.warning('Service startup timeout - continuing anyway');
+          return <dynamic>[];
+        },
+      );
 
       LoggerService.info('Emergency response services started');
     } catch (e) {
@@ -261,17 +283,155 @@ class EmergencyResponseService {
   /// Stop all emergency responses
   Future<void> _stopEmergencyResponse() async {
     try {
-      final audioService = AudioService();
-      final flashlightService = FlashlightService();
-      final vibrationService = VibrationService();
+      LoggerService.info('Stopping all emergency responses...');
 
       await Future.wait([
-        audioService.stopAlarm(),
-        flashlightService.stopFlashing(),
-        vibrationService.stopVibration(),
+        _audioService.stopAlarm(),
+        _flashlightService.stopFlashing(),
+        _vibrationService.stopVibration(),
       ]);
+
+      // Double-check audio stopped, use emergency reset if needed
+      await Future.delayed(const Duration(milliseconds: 100));
+      if (_audioService.isPlaying) {
+        LoggerService.warning(
+          'Audio still playing after stop - using emergency reset',
+        );
+        await _audioService.emergencyReset();
+      }
+
+      LoggerService.info('All emergency responses stopped');
     } catch (e) {
       LoggerService.error('Error stopping emergency response: $e');
+      // Emergency fallback
+      try {
+        await _audioService.emergencyReset();
+        LoggerService.info('Emergency reset completed as fallback');
+      } catch (resetError) {
+        LoggerService.error('Emergency reset also failed: $resetError');
+      }
+    }
+  }
+
+  /// Stop only local alerts (audio, vibration, flashlight) without canceling emergency
+  Future<void> stopLocalAlerts() async {
+    try {
+      LoggerService.info('🚫 Stopping local alerts only...');
+
+      // Check initial states
+      LoggerService.debug('Audio playing: ${_audioService.isPlaying}');
+      LoggerService.debug('Vibration active: ${_vibrationService.isVibrating}');
+      LoggerService.debug(
+        'Flashlight active: ${_flashlightService.isFlashing}',
+      );
+
+      // FIRST: Perform an emergency audio reset immediately
+      // This ensures any current audio is silenced right away
+      await _audioService.emergencyReset().timeout(
+        const Duration(seconds: 1),
+        onTimeout: () {
+          LoggerService.warning('Audio emergency reset timed out');
+          return;
+        },
+      );
+
+      // SECOND: Stop all other alerts in parallel
+      final stopFutures = [
+        _flashlightService.stopFlashing(),
+        _vibrationService.stopVibration(),
+      ];
+
+      await Future.wait(stopFutures).timeout(
+        const Duration(seconds: 2),
+        onTimeout: () {
+          LoggerService.warning('Normal stop timeout for non-audio services');
+          return <dynamic>[];
+        },
+      );
+
+      // THIRD: Wait a moment and verify services actually stopped
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      // Check states after stop attempt
+      bool audioStillPlaying = _audioService.isPlaying;
+      bool vibrationStillActive = _vibrationService.isVibrating;
+      bool flashlightStillActive = _flashlightService.isFlashing;
+
+      LoggerService.debug(
+        'After stop - Audio: $audioStillPlaying, Vibration: $vibrationStillActive, Flashlight: $flashlightStillActive',
+      );
+
+      // FOURTH: Do another round of emergency resets for any service still active
+      List<Future> secondaryStopFutures = [];
+
+      // Always do another audio emergency reset regardless of reported state
+      LoggerService.info(
+        'Performing secondary audio emergency reset for certainty',
+      );
+      secondaryStopFutures.add(_audioService.emergencyReset());
+
+      if (vibrationStillActive) {
+        LoggerService.warning('Vibration still active - force stopping');
+        secondaryStopFutures.add(_vibrationService.stopVibration());
+      }
+
+      if (flashlightStillActive) {
+        LoggerService.warning('Flashlight still active - force stopping');
+        secondaryStopFutures.add(_flashlightService.stopFlashing());
+      }
+
+      // Execute secondary stops
+      await Future.wait(secondaryStopFutures).timeout(
+        const Duration(seconds: 2),
+        onTimeout: () {
+          LoggerService.warning('Secondary stops timed out');
+          return <dynamic>[];
+        },
+      );
+
+      // FIFTH: Verify final state
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      // Final state check
+      final finalAudioState = _audioService.isPlaying;
+      final finalVibrationState = _vibrationService.isVibrating;
+      final finalFlashlightState = _flashlightService.isFlashing;
+
+      LoggerService.debug(
+        'FINAL STATE - Audio: $finalAudioState, Vibration: $finalVibrationState, Flashlight: $finalFlashlightState',
+      );
+
+      if (finalAudioState || finalVibrationState || finalFlashlightState) {
+        LoggerService.warning(
+          'Some alerts still active after multiple stop attempts',
+        );
+        // One final attempt at stopping everything
+        await Future.wait([
+          _audioService.emergencyReset(),
+          _vibrationService.stopVibration(),
+          _flashlightService.stopFlashing(),
+        ]);
+      }
+
+      LoggerService.info(
+        '✅ Local alerts stopped - emergency countdown continues',
+      );
+    } catch (e) {
+      LoggerService.error('❌ Error stopping local alerts: $e');
+      // As a last resort, try emergency reset for all services
+      try {
+        LoggerService.warning(
+          '🧨 Using nuclear option - emergency reset all services',
+        );
+        await Future.wait([
+          _audioService.emergencyReset(),
+          _vibrationService.stopVibration(),
+          _flashlightService.stopFlashing(),
+        ]);
+        LoggerService.info('✅ Emergency reset completed as fallback');
+      } catch (resetError) {
+        LoggerService.error('❌ Emergency reset also failed: $resetError');
+      }
     }
   }
 
