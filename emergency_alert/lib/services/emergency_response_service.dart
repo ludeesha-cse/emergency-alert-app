@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/alert.dart';
 import '../models/contact.dart';
+import '../models/sensor_data.dart';
 import '../utils/constants.dart';
 import 'audio/audio_service.dart';
 import 'flashlight/flashlight_service.dart';
@@ -136,24 +137,157 @@ class EmergencyResponseService {
   /// Send emergency alert immediately (skip countdown)
   Future<void> sendEmergencyImmediately() async {
     if (!_isEmergencyActive || _currentAlert == null) {
+      LoggerService.warning(
+        'Attempted to send emergency immediately but no active alert',
+      );
+      print('⚠️ Attempted to send emergency immediately but no active alert');
       return;
     }
 
     try {
+      LoggerService.info(
+        '🚨 SENDING EMERGENCY IMMEDIATELY - Bypassing countdown',
+      );
+      print('🚨 User pressed Send Now - Sending emergency immediately');
+
       // Cancel countdown timer
       _emergencyCountdown?.cancel();
 
       // Get emergency contacts
       final contacts = await _getEmergencyContacts();
-      final locationService = LocationService();
-      final location = await locationService.getLocationWithAddress();
+      if (contacts.isEmpty) {
+        LoggerService.warning(
+          'No emergency contacts configured - cannot send alerts',
+        );
+        print('⚠️ No emergency contacts configured - cannot send alerts');
+        return;
+      }
 
-      // Send emergency alerts
-      await _sendEmergencyAlerts(_currentAlert!, contacts, location?.address);
+      print('📞 Found ${contacts.length} emergency contacts');
+      LoggerService.info(
+        'Found ${contacts.length} emergency contacts: ${contacts.map((c) => c.name).join(", ")}',
+      );
 
-      LoggerService.info('Emergency sent immediately');
+      // Get current location - handle possible errors
+      LocationData? location;
+      String? locationInfo;
+
+      try {
+        final locationService = LocationService();
+        location = await locationService.getLocationWithAddress();
+
+        if (location != null) {
+          locationInfo =
+              location.address ??
+              'Location: ${location.latitude}, ${location.longitude}';
+          if (location.isFallback) {
+            locationInfo = '(Last known $locationInfo)';
+          }
+          print('📍 Location retrieved: ${locationInfo}');
+        } else {
+          print('⚠️ Could not retrieve current location');
+          // Use last known location from alert if available
+          if (_currentAlert!.latitude != null &&
+              _currentAlert!.longitude != null) {
+            locationInfo =
+                'Last known location: ${_currentAlert!.latitude}, ${_currentAlert!.longitude}';
+            if (_currentAlert!.address != null) {
+              locationInfo = '${_currentAlert!.address}';
+            }
+            print('📍 Using cached location: $locationInfo');
+          } else {
+            locationInfo = 'Location unavailable';
+            print('⚠️ No location data available');
+          }
+        }
+      } catch (e) {
+        LoggerService.error('Error getting location: $e');
+        print('⚠️ Error getting location: $e');
+        locationInfo = 'Location unavailable due to error';
+      }
+
+      // Double-check SMS permission at this critical point
+      final smsService = SmsService();
+      final hasPermission = await smsService.checkPermissions();
+
+      if (!hasPermission) {
+        LoggerService.error('❌ SMS permission not granted at critical moment!');
+        print('❌ SMS permission not granted at critical moment!');
+        // We'll attempt to request permission again
+        final permissionRetry = await smsService.checkPermissions();
+        if (!permissionRetry) {
+          print('❌ SMS permission retry failed - still trying to send');
+        } else {
+          print('✅ SMS permission granted on retry');
+        }
+      }
+
+      // Send emergency alerts with more retries
+      bool success = false;
+      int attempts = 0;
+      const maxAttempts = 5; // Increased from 3 to 5 attempts
+
+      while (!success && attempts < maxAttempts) {
+        attempts++;
+        LoggerService.info('Sending emergency alerts - attempt $attempts');
+        print('📤 Sending emergency alerts - attempt $attempts');
+
+        // Try with increased timeout between retries
+        success = await _sendEmergencyAlerts(
+          _currentAlert!,
+          contacts,
+          locationInfo,
+        );
+
+        if (!success && attempts < maxAttempts) {
+          // Wait longer between retries
+          final delay = attempts * 2; // Increasing delay with each retry
+          print('⏱️ Waiting $delay seconds before retry ${attempts + 1}');
+          await Future.delayed(Duration(seconds: delay));
+        }
+      }
+
+      if (success) {
+        LoggerService.info('✅ Emergency sent immediately - SUCCESS');
+        print('✅ Emergency alerts sent successfully');
+
+        // Update alert status
+        final updatedAlert = _currentAlert!.copyWith(
+          status: AlertStatus.sent,
+          sentToContacts: contacts.map((c) => c.id).toList(),
+        );
+        _currentAlert = updatedAlert;
+        _currentAlertController.add(updatedAlert);
+
+        // Ensure it's saved to history
+        await _saveAlertToHistory(updatedAlert);
+      } else {
+        LoggerService.warning(
+          '⚠️ All attempts to send emergency alerts failed',
+        );
+        print('⚠️ All ${maxAttempts} attempts to send emergency alerts failed');
+
+        // Update alert status to failed
+        final failedAlert = _currentAlert!.copyWith(status: AlertStatus.failed);
+        _currentAlert = failedAlert;
+        _currentAlertController.add(failedAlert);
+
+        // Save failed status to history
+        await _saveAlertToHistory(failedAlert);
+      }
     } catch (e) {
       LoggerService.error('Error sending emergency immediately: $e');
+      print('❌ Error sending emergency immediately: $e');
+
+      // Update alert status to failed on exception
+      if (_currentAlert != null) {
+        final failedAlert = _currentAlert!.copyWith(status: AlertStatus.failed);
+        _currentAlert = failedAlert;
+        _currentAlertController.add(failedAlert);
+
+        // Save failed status to history
+        await _saveAlertToHistory(failedAlert);
+      }
     }
   }
 
@@ -205,31 +339,143 @@ class EmergencyResponseService {
     List<EmergencyContact> contacts,
     String? locationInfo,
   ) async {
-    int remainingSeconds = AppConstants.alertCountdownSeconds;
+    try {
+      int remainingSeconds = AppConstants.alertCountdownSeconds;
 
-    _emergencyCountdown = Timer.periodic(const Duration(seconds: 1), (
-      timer,
-    ) async {
-      remainingSeconds--;
-      _countdownController.add(remainingSeconds);
+      _emergencyCountdown = Timer.periodic(const Duration(seconds: 1), (
+        timer,
+      ) async {
+        try {
+          remainingSeconds--;
+          _countdownController.add(remainingSeconds);
 
-      if (remainingSeconds <= 0) {
-        timer.cancel();
+          if (remainingSeconds <= 0) {
+            timer.cancel();
 
-        // Send emergency alerts after countdown
+            // Send emergency alerts after countdown
+            LoggerService.info('Countdown finished - sending emergency alerts');
+            print(
+              '⏱️ Countdown finished - sending emergency alerts automatically',
+            );
+
+            // Ensure the alert wasn't cancelled during countdown
+            if (_isEmergencyActive && _currentAlert != null) {
+              // Send emergency alerts with retries
+              bool success = false;
+              int attempts = 0;
+              const maxAttempts = 3;
+
+              while (!success && attempts < maxAttempts) {
+                attempts++;
+                LoggerService.info(
+                  'Sending automatic emergency alerts - attempt $attempts',
+                );
+                print(
+                  '📤 Sending automatic emergency alerts - attempt $attempts',
+                );
+
+                success = await _sendEmergencyAlerts(
+                  alert,
+                  contacts,
+                  locationInfo,
+                );
+
+                if (!success && attempts < maxAttempts) {
+                  // Wait between retries
+                  await Future.delayed(Duration(seconds: 2));
+                }
+              }
+
+              if (!success) {
+                LoggerService.error(
+                  'Failed to send automatic emergency alerts after $maxAttempts attempts',
+                );
+                print(
+                  '❌ Failed to send automatic emergency alerts after $maxAttempts attempts',
+                );
+              }
+            } else {
+              LoggerService.info(
+                'Emergency was cancelled during countdown - not sending alerts',
+              );
+              print(
+                '🛑 Emergency was cancelled during countdown - not sending alerts',
+              );
+            }
+          }
+        } catch (timerError) {
+          // Prevent timer callback errors from crashing the app
+          LoggerService.error('Error in countdown timer callback: $timerError');
+          print('❌ Error in countdown timer: $timerError');
+
+          // Cancel the timer if there's an error to prevent repeated errors
+          timer.cancel();
+
+          // Try to send alerts anyway if we had an error during countdown
+          try {
+            await _sendEmergencyAlerts(alert, contacts, locationInfo);
+          } catch (sendError) {
+            LoggerService.error(
+              'Error sending emergency alerts after timer error: $sendError',
+            );
+          }
+        }
+      });
+    } catch (e) {
+      LoggerService.error('Error starting countdown timer: $e');
+      print('❌ Error starting countdown: $e');
+
+      // Try to send alerts anyway if we couldn't set up the countdown
+      try {
         await _sendEmergencyAlerts(alert, contacts, locationInfo);
+      } catch (sendError) {
+        LoggerService.error(
+          'Error sending emergency alerts after countdown setup error: $sendError',
+        );
       }
-    });
+    }
   }
 
   /// Send emergency alerts via SMS and update status
-  Future<void> _sendEmergencyAlerts(
+  /// Returns true if SMS was sent successfully to all contacts
+  Future<bool> _sendEmergencyAlerts(
     Alert alert,
     List<EmergencyContact> contacts,
     String? locationInfo,
   ) async {
     try {
+      LoggerService.info(
+        'Sending emergency alerts to ${contacts.length} contacts',
+      );
+      print('📱 Attempting to send SMS to ${contacts.length} contacts');
+
+      if (contacts.isEmpty) {
+        LoggerService.warning('No emergency contacts to send alerts to');
+        print('⚠️ No emergency contacts to send alerts to');
+        return false;
+      }
+
+      // Double-check SMS permission before sending
       final smsService = SmsService();
+      final hasPermission = await smsService.checkPermissions();
+
+      if (!hasPermission) {
+        LoggerService.error(
+          'SMS permission not granted - trying to request it',
+        );
+        print('⚠️ SMS permission not granted - trying to request it');
+
+        // Try to request permission again
+        final permissionRetry = await smsService.checkPermissions();
+        if (!permissionRetry) {
+          LoggerService.error(
+            'SMS permission denied after retry - attempting to send anyway',
+          );
+          print(
+            '⚠️ SMS permission denied after retry - attempting to send anyway',
+          );
+        }
+      }
 
       // Send SMS alerts
       final success = await smsService.sendEmergencyAlert(
@@ -237,6 +483,14 @@ class EmergencyResponseService {
         alert: alert,
         locationInfo: locationInfo,
       );
+
+      if (success) {
+        LoggerService.info('✅ Emergency SMS alerts sent successfully');
+        print('✅ Emergency SMS alerts sent successfully');
+      } else {
+        LoggerService.error('❌ Failed to send emergency SMS alerts');
+        print('❌ Failed to send emergency SMS alerts');
+      }
 
       // Update alert status
       final updatedAlert = alert.copyWith(
@@ -252,16 +506,26 @@ class EmergencyResponseService {
 
       // Keep emergency response active for a while even after sending
       Future.delayed(const Duration(minutes: 2), () async {
-        await _cleanup();
+        if (_isEmergencyActive) {
+          LoggerService.info(
+            'Auto-cleanup after 2 minutes since emergency alert was sent',
+          );
+          await _cleanup();
+        }
       });
+
+      return success;
     } catch (e) {
       LoggerService.error('Error sending emergency alerts: $e');
+      print('❌ Error sending emergency alerts: $e');
 
       // Mark as failed
       final failedAlert = alert.copyWith(status: AlertStatus.failed);
       _currentAlert = failedAlert;
       _currentAlertController.add(failedAlert);
       await _saveAlertToHistory(failedAlert);
+
+      return false;
     }
   }
 
@@ -547,11 +811,40 @@ class EmergencyResponseService {
         return;
       }
 
-      // Get current location
-      final locationService = LocationService();
-      final location = await locationService.getLocationWithAddress();
+      // Get current location with robust error handling
+      LocationData? location;
+      String? locationInfo;
 
-      // Update alert with location data
+      try {
+        final locationService = LocationService();
+
+        // Set a timeout for location fetching to prevent UI blocking
+        location = await locationService.getLocationWithAddress().timeout(
+          const Duration(seconds: 15),
+          onTimeout: () {
+            LoggerService.warning('Location fetch timed out after 15 seconds');
+            print('⚠️ Location fetch timed out after 15 seconds');
+            return null;
+          },
+        );
+
+        if (location != null) {
+          locationInfo =
+              location.address ??
+              'Location: ${location.latitude}, ${location.longitude}';
+          print('📍 Location retrieved: ${locationInfo}');
+        } else {
+          print('⚠️ Could not retrieve location for background data gathering');
+          locationInfo = 'Location unavailable';
+        }
+      } catch (locError) {
+        // Handle location errors gracefully
+        LoggerService.error('Error getting location in background: $locError');
+        print('⚠️ Error getting location in background: $locError');
+        // Continue without location
+      }
+
+      // Update alert with location data (if available)
       final updatedAlert = tempAlert.copyWith(
         latitude: location?.latitude,
         longitude: location?.longitude,
@@ -562,9 +855,10 @@ class EmergencyResponseService {
       _currentAlertController.add(updatedAlert);
 
       // Start countdown for UI display
-      await _startCountdown(updatedAlert, contacts, location?.address);
+      await _startCountdown(updatedAlert, contacts, locationInfo);
     } catch (e) {
       LoggerService.error('Error in background data gathering: $e');
+      print('❌ Error in background data gathering: $e');
       // Continue with basic alert even if data gathering fails
     }
   }

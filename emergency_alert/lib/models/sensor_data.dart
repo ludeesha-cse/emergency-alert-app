@@ -59,6 +59,7 @@ class LocationData {
   final double? speed;
   final DateTime timestamp;
   final String? address;
+  final bool isFallback;
 
   LocationData({
     required this.latitude,
@@ -68,6 +69,7 @@ class LocationData {
     this.speed,
     required this.timestamp,
     this.address,
+    this.isFallback = false,
   });
 
   factory LocationData.fromJson(Map<String, dynamic> json) {
@@ -79,6 +81,7 @@ class LocationData {
       speed: json['speed']?.toDouble(),
       timestamp: DateTime.parse(json['timestamp']),
       address: json['address'],
+      isFallback: json['isFallback'] ?? false,
     );
   }
 
@@ -91,6 +94,7 @@ class LocationData {
       'speed': speed,
       'timestamp': timestamp.toIso8601String(),
       'address': address,
+      'isFallback': isFallback,
     };
   }
 

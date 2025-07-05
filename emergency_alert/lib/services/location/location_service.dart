@@ -3,6 +3,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:location/location.dart' as loc;
 import '../../models/sensor_data.dart';
+import '../logger/logger_service.dart';
 
 class LocationService {
   static final LocationService _instance = LocationService._internal();
@@ -71,28 +72,82 @@ class LocationService {
     try {
       final hasPermission = await checkPermissions();
       if (!hasPermission) {
+        LoggerService.warning('Location permissions not granted');
         return null;
       }
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          distanceFilter: 10,
-        ),
-      );
 
-      final locationData = LocationData(
-        latitude: position.latitude,
-        longitude: position.longitude,
-        altitude: position.altitude,
-        accuracy: position.accuracy,
-        speed: position.speed,
-        timestamp: DateTime.now(),
-      );
+      // Check if location services are enabled
+      bool serviceEnabled;
+      try {
+        serviceEnabled = await Geolocator.isLocationServiceEnabled();
+        if (!serviceEnabled) {
+          LoggerService.warning('Location services are disabled');
+          return null;
+        }
+      } catch (e) {
+        LoggerService.error('Error checking location service status: $e');
+        // Continue anyway, we'll catch any errors in the position fetch
+      }
 
-      _lastLocation = locationData;
-      return locationData;
+      // Try to get current position with a timeout
+      try {
+        final position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 10,
+          ),
+        ).timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            LoggerService.warning('Location request timed out after 10 seconds');
+            throw TimeoutException('Location request timed out');
+          },
+        );
+
+        final locationData = LocationData(
+          latitude: position.latitude,
+          longitude: position.longitude,
+          altitude: position.altitude,
+          accuracy: position.accuracy,
+          speed: position.speed,
+          timestamp: DateTime.now(),
+        );
+
+        _lastLocation = locationData;
+        return locationData;
+      } catch (e) {
+        LoggerService.error('Error getting position: $e');
+
+        // Try fallback to last known position if available
+        try {
+          LoggerService.info('Trying fallback to last known position');
+          final lastPosition = await Geolocator.getLastKnownPosition();
+
+          if (lastPosition != null) {
+            LoggerService.info('Using last known position as fallback');
+            final locationData = LocationData(
+              latitude: lastPosition.latitude,
+              longitude: lastPosition.longitude,
+              altitude: lastPosition.altitude,
+              accuracy: lastPosition.accuracy,
+              speed: lastPosition.speed,
+              timestamp: DateTime.now(),
+              isFallback: true,
+            );
+
+            _lastLocation = locationData;
+            return locationData;
+          } else {
+            LoggerService.warning('No last known position available');
+            return null;
+          }
+        } catch (fallbackError) {
+          LoggerService.error('Error getting last known position: $fallbackError');
+          return null;
+        }
+      }
     } catch (e) {
-      print('Error getting current location: $e');
+      LoggerService.error('Unexpected error in getCurrentLocation: $e');
       return null;
     }
   }
@@ -168,24 +223,37 @@ class LocationService {
   }
 
   Future<LocationData?> getLocationWithAddress() async {
-    final location = await getCurrentLocation();
-    if (location != null) {
-      final address = await getAddressFromCoordinates(
-        location.latitude,
-        location.longitude,
-      );
+    try {
+      final location = await getCurrentLocation();
+      if (location != null) {
+        String? address;
 
-      return LocationData(
-        latitude: location.latitude,
-        longitude: location.longitude,
-        altitude: location.altitude,
-        accuracy: location.accuracy,
-        speed: location.speed,
-        timestamp: location.timestamp,
-        address: address,
-      );
+        try {
+          address = await getAddressFromCoordinates(
+            location.latitude,
+            location.longitude,
+          );
+        } catch (e) {
+          LoggerService.error('Error getting address: $e');
+          // Continue without address
+        }
+
+        return LocationData(
+          latitude: location.latitude,
+          longitude: location.longitude,
+          altitude: location.altitude,
+          accuracy: location.accuracy,
+          speed: location.speed,
+          timestamp: location.timestamp,
+          address: address,
+          isFallback: location.isFallback,
+        );
+      }
+      return null;
+    } catch (e) {
+      LoggerService.error('Error in getLocationWithAddress: $e');
+      return null;
     }
-    return null;
   }
 
   void dispose() {

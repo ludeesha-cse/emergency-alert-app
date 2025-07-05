@@ -43,6 +43,7 @@ dependencies:
 
   # SMS messaging
   url_launcher: ^6.2.5
+  # Direct SMS sending is handled via native MethodChannel
 
   # Background service execution
   flutter_background_service: ^5.0.10
@@ -56,7 +57,7 @@ dependencies:
   # Vibration feedback
   vibration: ^2.0.0
 
-  # Permission handling
+  # Permission  
   permission_handler: ^11.3.1
 
   # Local storage
