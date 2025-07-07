@@ -257,8 +257,10 @@ class BackgroundService {
       ]);
 
       // Wait for countdown period
+      final prefs = await SharedPreferences.getInstance();
+      final alertDelaySeconds = prefs.getInt('alert_delay_seconds') ?? AppConstants.alertCountdownSeconds;
       await Future.delayed(
-        Duration(seconds: AppConstants.alertCountdownSeconds),
+        Duration(seconds: alertDelaySeconds),
       );
 
       // Send SMS alerts

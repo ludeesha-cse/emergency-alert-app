@@ -340,7 +340,9 @@ class EmergencyResponseService {
     String? locationInfo,
   ) async {
     try {
-      int remainingSeconds = AppConstants.alertCountdownSeconds;
+      // Get user's configured alert delay or use default
+      final prefs = await SharedPreferences.getInstance();
+      int remainingSeconds = prefs.getInt('alert_delay_seconds') ?? AppConstants.alertCountdownSeconds;
 
       _emergencyCountdown = Timer.periodic(const Duration(seconds: 1), (
         timer,
@@ -787,7 +789,11 @@ class EmergencyResponseService {
       // Immediately broadcast the emergency state and start countdown
       _currentAlertController.add(tempAlert);
       _emergencyActiveController.add(true);
-      _countdownController.add(AppConstants.alertCountdownSeconds);
+      
+      // Get user's configured alert delay or use default
+      final prefs = await SharedPreferences.getInstance();
+      final alertDelaySeconds = prefs.getInt('alert_delay_seconds') ?? AppConstants.alertCountdownSeconds;
+      _countdownController.add(alertDelaySeconds);
 
       // Start immediate emergency response (audio, vibration, flashlight) FIRST
       await _startImmediateResponse();

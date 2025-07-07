@@ -9,6 +9,7 @@ import '../../services/emergency_response_service.dart';
 import '../../services/logger/logger_service.dart';
 import '../../utils/permission_helper.dart';
 import '../../utils/permission_fallbacks.dart';
+import '../../utils/constants.dart';
 import '../../models/sensor_data.dart';
 import '../../models/alert.dart';
 import '../screens/permission_screen.dart';
@@ -236,7 +237,7 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context) => StreamBuilder<int>(
         stream: _emergencyService.countdownStream,
         builder: (context, snapshot) {
-          final remainingSeconds = snapshot.data ?? 30;
+          final remainingSeconds = snapshot.data ?? AppConstants.alertCountdownSeconds;
 
           return AlertDialog(
             title: Text(alertType),
