@@ -21,6 +21,7 @@ class EmergencyResponseService {
   Timer? _emergencyCountdown;
   Alert? _currentAlert;
   bool _isEmergencyActive = false;
+  DateTime? _lastSmsSentTimestamp; // Track when last SMS was sent
 
   // Service instances for proper cleanup
   final AudioService _audioService = AudioService();
@@ -134,6 +135,22 @@ class EmergencyResponseService {
     }
   }
 
+  /// Check if SMS was sent within the last 2 minutes to prevent duplicates
+  bool _wasSmsRecentlySent() {
+    if (_lastSmsSentTimestamp == null) return false;
+
+    final now = DateTime.now();
+    final timeDifference = now.difference(_lastSmsSentTimestamp!);
+    const twoMinutes = Duration(minutes: 2);
+
+    return timeDifference < twoMinutes;
+  }
+
+  /// Reset SMS timestamp (called when emergency is cancelled or cleaned up)
+  void _resetSmsTimestamp() {
+    _lastSmsSentTimestamp = null;
+  }
+
   /// Send emergency alert immediately (skip countdown)
   Future<void> sendEmergencyImmediately() async {
     if (!_isEmergencyActive || _currentAlert == null) {
@@ -145,6 +162,21 @@ class EmergencyResponseService {
     }
 
     try {
+      // Check if SMS was already sent recently (optional warning, but still allow manual send)
+      if (_wasSmsRecentlySent()) {
+        final timeSinceLastSms = DateTime.now().difference(
+          _lastSmsSentTimestamp!,
+        );
+        final remainingTime = Duration(minutes: 2) - timeSinceLastSms;
+
+        LoggerService.warning(
+          '⚠️ SMS was already sent ${timeSinceLastSms.inSeconds} seconds ago - but proceeding with manual send request (${remainingTime.inSeconds}s remaining in cooldown)',
+        );
+        print(
+          '⚠️ Warning: SMS was already sent ${timeSinceLastSms.inSeconds} seconds ago, but proceeding with manual send (${remainingTime.inSeconds}s remaining)',
+        );
+      }
+
       LoggerService.info(
         '🚨 SENDING EMERGENCY IMMEDIATELY - Bypassing countdown',
       );
@@ -342,7 +374,9 @@ class EmergencyResponseService {
     try {
       // Get user's configured alert delay or use default
       final prefs = await SharedPreferences.getInstance();
-      int remainingSeconds = prefs.getInt('alert_delay_seconds') ?? AppConstants.alertCountdownSeconds;
+      int remainingSeconds =
+          prefs.getInt('alert_delay_seconds') ??
+          AppConstants.alertCountdownSeconds;
 
       _emergencyCountdown = Timer.periodic(const Duration(seconds: 1), (
         timer,
@@ -362,6 +396,22 @@ class EmergencyResponseService {
 
             // Ensure the alert wasn't cancelled during countdown
             if (_isEmergencyActive && _currentAlert != null) {
+              // Check if SMS was already sent recently to prevent duplicates
+              if (_wasSmsRecentlySent()) {
+                final timeSinceLastSms = DateTime.now().difference(
+                  _lastSmsSentTimestamp!,
+                );
+                final remainingTime = Duration(minutes: 2) - timeSinceLastSms;
+
+                LoggerService.info(
+                  '⚠️ SMS was already sent ${timeSinceLastSms.inSeconds} seconds ago - skipping automatic send (${remainingTime.inSeconds}s remaining)',
+                );
+                print(
+                  '⚠️ SMS was already sent ${timeSinceLastSms.inSeconds} seconds ago - skipping automatic send to prevent duplicates (${remainingTime.inSeconds}s until next allowed)',
+                );
+                return;
+              }
+
               // Send emergency alerts with retries
               bool success = false;
               int attempts = 0;
@@ -489,6 +539,11 @@ class EmergencyResponseService {
       if (success) {
         LoggerService.info('✅ Emergency SMS alerts sent successfully');
         print('✅ Emergency SMS alerts sent successfully');
+
+        // Update last SMS sent timestamp to prevent duplicates
+        _lastSmsSentTimestamp = DateTime.now();
+        LoggerService.info('📝 SMS timestamp recorded: $_lastSmsSentTimestamp');
+        print('📝 SMS timestamp recorded to prevent duplicate sends');
       } else {
         LoggerService.error('❌ Failed to send emergency SMS alerts');
         print('❌ Failed to send emergency SMS alerts');
@@ -744,6 +799,9 @@ class EmergencyResponseService {
     _currentAlert = null;
     _isEmergencyActive = false;
 
+    // Reset SMS timestamp when cleaning up
+    _resetSmsTimestamp();
+
     _currentAlertController.add(null);
     _emergencyActiveController.add(false);
     _countdownController.add(0);
@@ -789,10 +847,12 @@ class EmergencyResponseService {
       // Immediately broadcast the emergency state and start countdown
       _currentAlertController.add(tempAlert);
       _emergencyActiveController.add(true);
-      
+
       // Get user's configured alert delay or use default
       final prefs = await SharedPreferences.getInstance();
-      final alertDelaySeconds = prefs.getInt('alert_delay_seconds') ?? AppConstants.alertCountdownSeconds;
+      final alertDelaySeconds =
+          prefs.getInt('alert_delay_seconds') ??
+          AppConstants.alertCountdownSeconds;
       _countdownController.add(alertDelaySeconds);
 
       // Start immediate emergency response (audio, vibration, flashlight) FIRST
@@ -867,6 +927,17 @@ class EmergencyResponseService {
       print('❌ Error in background data gathering: $e');
       // Continue with basic alert even if data gathering fails
     }
+  }
+
+  /// Get information about the last SMS sent time for debugging
+  Map<String, dynamic> getSmsStatus() {
+    return {
+      'lastSmsSentTimestamp': _lastSmsSentTimestamp?.toIso8601String(),
+      'wasSmsRecentlySent': _wasSmsRecentlySent(),
+      'timeSinceLastSms': _lastSmsSentTimestamp != null
+          ? DateTime.now().difference(_lastSmsSentTimestamp!).inSeconds
+          : null,
+    };
   }
 
   /// Dispose service and clean up
