@@ -43,6 +43,13 @@ class EmergencyResponseService {
   bool get isEmergencyActive => _isEmergencyActive;
   Alert? get currentAlert => _currentAlert;
 
+  /// Check if any local emergency services (audio, vibration, flashlight) are currently active
+  bool get hasActiveLocalServices {
+    return _audioService.isPlaying ||
+        _vibrationService.isVibrating ||
+        _flashlightService.isFlashing;
+  }
+
   /// Trigger an emergency alert with countdown
   Future<void> triggerEmergency({
     required AlertType alertType,

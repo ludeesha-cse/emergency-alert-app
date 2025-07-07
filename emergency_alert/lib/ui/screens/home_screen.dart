@@ -237,7 +237,8 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context) => StreamBuilder<int>(
         stream: _emergencyService.countdownStream,
         builder: (context, snapshot) {
-          final remainingSeconds = snapshot.data ?? AppConstants.alertCountdownSeconds;
+          final remainingSeconds =
+              snapshot.data ?? AppConstants.alertCountdownSeconds;
 
           return AlertDialog(
             title: Text(alertType),
@@ -668,6 +669,86 @@ class _HomeScreenState extends State<HomeScreen> {
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
+                ),
+
+                const SizedBox(height: 8),
+
+                // Stop Local Alerts Button
+                StreamBuilder<bool>(
+                  stream: _emergencyService.emergencyActiveStream,
+                  builder: (context, emergencySnapshot) {
+                    return StreamBuilder<int>(
+                      stream: _emergencyService.countdownStream,
+                      builder: (context, countdownSnapshot) {
+                        final isEmergencyActive =
+                            emergencySnapshot.data ?? false;
+                        final hasLocalServices =
+                            _emergencyService.hasActiveLocalServices;
+                        final shouldEnable =
+                            isEmergencyActive && hasLocalServices;
+
+                        return ElevatedButton.icon(
+                          onPressed: shouldEnable
+                              ? () async {
+                                  try {
+                                    print(
+                                      '🔇 User requested to stop all local alerts',
+                                    );
+
+                                    // Stop all local alerts
+                                    await _emergencyService.stopLocalAlerts();
+
+                                    // Show feedback
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            '🔇 Local alerts stopped. Emergency countdown continues.',
+                                          ),
+                                          backgroundColor: Colors.orange,
+                                          duration: Duration(seconds: 3),
+                                        ),
+                                      );
+                                    }
+                                  } catch (e) {
+                                    print('❌ Error stopping local alerts: $e');
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            '❌ Error stopping local alerts',
+                                          ),
+                                          backgroundColor: Colors.red,
+                                          duration: Duration(seconds: 2),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                }
+                              : null,
+                          icon: Icon(
+                            shouldEnable
+                                ? Icons.volume_off
+                                : Icons.volume_off_outlined,
+                          ),
+                          label: const Text('STOP LOCAL ALERTS'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: shouldEnable
+                                ? Colors.orange
+                                : Colors.grey[300],
+                            foregroundColor: shouldEnable
+                                ? Colors.white
+                                : Colors.grey[600],
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                          ),
+                        );
+                      },
+                    );
+                  },
                 ),
 
                 const SizedBox(height: 16),
