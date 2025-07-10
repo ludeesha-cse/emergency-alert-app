@@ -507,7 +507,7 @@ class _PermissionScreenState extends State<PermissionScreen> {
 }
 
 class _HeaderWidget extends StatelessWidget {
-  const _HeaderWidget({super.key});
+  const _HeaderWidget();
 
   @override
   Widget build(BuildContext context) {

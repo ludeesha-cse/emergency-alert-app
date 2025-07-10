@@ -222,7 +222,7 @@ class EmergencyResponseService {
           if (location.isFallback) {
             locationInfo = '(Last known $locationInfo)';
           }
-          print('📍 Location retrieved: ${locationInfo}');
+          print('📍 Location retrieved: $locationInfo');
         } else {
           print('⚠️ Could not retrieve current location');
           // Use last known location from alert if available
@@ -304,7 +304,7 @@ class EmergencyResponseService {
         LoggerService.warning(
           '⚠️ All attempts to send emergency alerts failed',
         );
-        print('⚠️ All ${maxAttempts} attempts to send emergency alerts failed');
+        print('⚠️ All $maxAttempts attempts to send emergency alerts failed');
 
         // Update alert status to failed
         final failedAlert = _currentAlert!.copyWith(status: AlertStatus.failed);
@@ -905,7 +905,7 @@ class EmergencyResponseService {
           locationInfo =
               location.address ??
               'Location: ${location.latitude}, ${location.longitude}';
-          print('📍 Location retrieved: ${locationInfo}');
+          print('📍 Location retrieved: $locationInfo');
         } else {
           print('⚠️ Could not retrieve location for background data gathering');
           locationInfo = 'Location unavailable';
