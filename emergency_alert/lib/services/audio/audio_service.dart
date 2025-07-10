@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 import 'package:just_audio/just_audio.dart';
 
 class AudioService {
@@ -17,12 +18,30 @@ class AudioService {
   // Track the last time stop was called to prevent race conditions
   int _lastStopTimeMs = 0;
 
+  // Logger helper
+  void _log(String message, {String level = 'info'}) {
+    developer.log(message, name: 'AudioService', level: _getLogLevel(level));
+  }
+
+  int _getLogLevel(String level) {
+    switch (level) {
+      case 'warning':
+        return 900;
+      case 'error':
+        return 1000;
+      case 'debug':
+        return 500;
+      default:
+        return 800; // info
+    }
+  }
+
   AudioPlayer _getOrCreatePlayer() {
     try {
       _audioPlayer ??= AudioPlayer();
       return _audioPlayer!;
     } catch (e) {
-      print('Error creating audio player: $e');
+      _log('Error creating audio player: $e', level: 'error');
       // If player creation fails, set a flag to use fallback only
       throw Exception('Audio player creation failed: $e');
     }
@@ -35,7 +54,7 @@ class AudioService {
     int durationSeconds = 30,
   }) async {
     try {
-      print('🔊 Starting emergency alarm...');
+      _log('Starting emergency alarm...');
 
       // Make sure any existing audio is fully stopped
       if (_isPlaying) {
@@ -55,7 +74,10 @@ class AudioService {
           try {
             await _audioPlayer!.dispose();
           } catch (e) {
-            print('Warning: Failed to dispose existing player: $e');
+            _log(
+              'Warning: Failed to dispose existing player: $e',
+              level: 'warning',
+            );
           }
           _audioPlayer = null;
         }
@@ -69,10 +91,13 @@ class AudioService {
         // Set playing flag before starting audio
         _isPlaying = true;
         await player.play();
-        print('✅ Audio file playing');
+        _log('Audio file playing');
       } catch (audioFileError) {
         // If audio file fails, fall back to beep pattern
-        print('Audio file failed, using beep pattern: $audioFileError');
+        _log(
+          'Audio file failed, using beep pattern: $audioFileError',
+          level: 'warning',
+        );
         _isPlaying = true;
         _startBeepPattern();
       }
@@ -83,7 +108,7 @@ class AudioService {
         stopAlarm();
       });
     } catch (e) {
-      print('❌ Error in playEmergencyAlarm: $e');
+      _log('Error in playEmergencyAlarm: $e', level: 'error');
       _isPlaying = false;
       // Make sure we reset everything on error
       await emergencyReset();
@@ -92,7 +117,7 @@ class AudioService {
 
   void _startBeepPattern() {
     // Create a simple beep pattern using periodic timer
-    print('🔊 Starting fallback beep pattern...');
+    _log('Starting fallback beep pattern...');
 
     // Make sure any existing beep timer is cancelled first
     _beepTimer?.cancel();
@@ -107,9 +132,7 @@ class AudioService {
     _beepTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
       // CRITICAL: Check at the beginning of each tick if we should still be playing
       if (!_isPlaying || _audioPlayer == null) {
-        print(
-          '🛑 Beep pattern stopping - playing flag is false or player is null',
-        );
+        _log('Beep pattern stopping - playing flag is false or player is null');
         timer.cancel();
         _beepTimer = null;
         _pendingVolumeOperations.clear(); // Clear on timer cancel
@@ -132,9 +155,9 @@ class AudioService {
           // Set initial volume to 0.0
           try {
             player.setVolume(0.0);
-            print('📉 Volume set to 0.0 (beep $beepId start)');
+            _log('Volume set to 0.0 (beep $beepId start)', level: 'debug');
           } catch (e) {
-            print('⚠️ Initial volume error: $e');
+            _log('Initial volume error: $e', level: 'warning');
             _pendingVolumeOperations.remove(beepId);
             return;
           }
@@ -143,7 +166,10 @@ class AudioService {
           Future.delayed(const Duration(milliseconds: 50), () {
             // First check if this specific operation was cancelled
             if (!_pendingVolumeOperations.contains(beepId)) {
-              print('🚫 Skipped volume up - operation $beepId was cancelled');
+              _log(
+                'Skipped volume up - operation $beepId was cancelled',
+                level: 'debug',
+              );
               return;
             }
 
@@ -156,8 +182,9 @@ class AudioService {
                 _beepTimer == null ||
                 currentPlayer.processingState == ProcessingState.completed ||
                 currentPlayer.processingState == ProcessingState.idle) {
-              print(
-                '🚫 Cancelled volume up (beep $beepId) - alarm was stopped or player changed',
+              _log(
+                'Cancelled volume up (beep $beepId) - alarm was stopped or player changed',
+                level: 'debug',
               );
               return;
             }
@@ -166,19 +193,22 @@ class AudioService {
             try {
               if (_isPlaying && _audioPlayer == currentPlayer) {
                 currentPlayer.setVolume(0.8);
-                print('📈 Volume set to 0.8 (beep $beepId end)');
+                _log('Volume set to 0.8 (beep $beepId end)', level: 'debug');
               } else {
-                print('🛑 Skipped volume up - player state mismatch');
+                _log(
+                  'Skipped volume up - player state mismatch',
+                  level: 'debug',
+                );
               }
             } catch (e) {
-              print('⚠️ Volume change error: $e');
+              _log('Volume change error: $e', level: 'warning');
             }
           });
         } else {
-          print('🔔 BEEP TICK (no active player)');
+          _log('BEEP TICK (no active player)', level: 'debug');
         }
       } catch (e) {
-        print('❌ Beep pattern error: $e');
+        _log('Beep pattern error: $e', level: 'error');
         // If we get repeated errors, disable the pattern
         timer.cancel();
         _beepTimer = null;
@@ -194,7 +224,10 @@ class AudioService {
         try {
           await _audioPlayer!.dispose();
         } catch (e) {
-          print('Warning: Failed to dispose existing player: $e');
+          _log(
+            'Warning: Failed to dispose existing player: $e',
+            level: 'warning',
+          );
         }
         _audioPlayer = null;
       }
@@ -209,9 +242,9 @@ class AudioService {
       await player.setLoopMode(LoopMode.one);
       await player.play();
 
-      print('✅ Silent player created for beep pattern');
+      _log('Silent player created for beep pattern');
     } catch (e) {
-      print('❌ Error creating silent player: $e');
+      _log('Error creating silent player: $e', level: 'error');
       _audioPlayer = null;
     }
   }
@@ -228,7 +261,7 @@ class AudioService {
 
   Future<void> stopAlarm() async {
     try {
-      print('🔇 Stopping audio alarm...');
+      _log('Stopping audio alarm...');
 
       // Record stop time to identify late callbacks
       _lastStopTimeMs = DateTime.now().millisecondsSinceEpoch;
@@ -240,7 +273,7 @@ class AudioService {
       // Clear all pending volume operations immediately
       int pendingOpsCount = _pendingVolumeOperations.length;
       _pendingVolumeOperations.clear();
-      print('🧹 Cleared $pendingOpsCount pending volume operations');
+      _log('Cleared $pendingOpsCount pending volume operations');
 
       // Cancel all timers first
       _alarmTimer?.cancel();
@@ -254,7 +287,7 @@ class AudioService {
       // Check if we actually need to stop anything
       bool hasActivePlayer = currentPlayer != null;
 
-      print('🔍 State check - hasActivePlayer: $hasActivePlayer');
+      _log('State check - hasActivePlayer: $hasActivePlayer');
 
       // Null out the player reference immediately to prevent future volume changes
       _audioPlayer = null;
@@ -264,31 +297,31 @@ class AudioService {
         // First mute immediately (this is the most important part for immediate silence)
         try {
           await currentPlayer.setVolume(0);
-          print('🔊 Volume immediately muted');
+          _log('Volume immediately muted');
         } catch (volumeError) {
-          print('⚠️ Immediate mute failed: $volumeError');
+          _log('Immediate mute failed: $volumeError', level: 'warning');
         }
 
         // Try multiple stop methods in sequence
         try {
-          print('🔄 Attempting to stop audio player...');
+          _log('Attempting to stop audio player...');
           // First try to disable looping
           await currentPlayer.setLoopMode(LoopMode.off);
           await currentPlayer.pause();
           await currentPlayer.stop();
           await currentPlayer.seek(Duration.zero);
-          print('✅ Basic stop sequence completed');
+          _log('Basic stop sequence completed');
         } catch (stopError) {
-          print('⚠️ Basic stop sequence failed: $stopError');
+          _log('Basic stop sequence failed: $stopError', level: 'warning');
         }
 
         // Force dispose regardless of stop success
         try {
-          print('🗑️ Force disposing audio player...');
+          _log('Force disposing audio player...');
           await currentPlayer.dispose();
-          print('✅ Audio player disposed');
+          _log('Audio player disposed');
         } catch (disposeError) {
-          print('❌ Dispose failed: $disposeError');
+          _log('Dispose failed: $disposeError', level: 'error');
         }
 
         // Additional system-level audio cleanup
@@ -297,27 +330,27 @@ class AudioService {
           // For now we just wait a moment for system cleanup
           await Future.delayed(const Duration(milliseconds: 300));
         } catch (e) {
-          print('⚠️ System cleanup error: $e');
+          _log('System cleanup error: $e', level: 'warning');
         }
 
         // Check if another stop was called while we were waiting
         if (_lastStopTimeMs == thisStopTime) {
-          print('✅ Audio alarm stopped completely');
+          _log('Audio alarm stopped completely');
         } else {
-          print(
-            'ℹ️ Another stop was called while processing - deferring to newer stop',
+          _log(
+            'Another stop was called while processing - deferring to newer stop',
           );
         }
       } else {
-        print('ℹ️ Audio alarm was not playing (no player found)');
+        _log('Audio alarm was not playing (no player found)');
       }
 
       // Always verify that state is clean at the end - just to be absolutely sure
       _isPlaying = false;
       _pendingVolumeOperations.clear();
     } catch (e) {
-      print('❌ Error stopping audio alarm: $e');
-      print('🚨 Triggering emergency reset...');
+      _log('Error stopping audio alarm: $e', level: 'error');
+      _log('Triggering emergency reset...', level: 'warning');
       // If normal stop fails, use nuclear option
       await emergencyReset();
     }
@@ -329,7 +362,7 @@ class AudioService {
 
   /// Nuclear option: Completely reset the audio service
   Future<void> emergencyReset() async {
-    print('🚨 EMERGENCY AUDIO RESET - Nuclear option activated');
+    _log('EMERGENCY AUDIO RESET - Nuclear option activated', level: 'warning');
 
     // Update stop time to invalidate any pending callbacks
     _lastStopTimeMs = DateTime.now().millisecondsSinceEpoch;
@@ -340,7 +373,7 @@ class AudioService {
     // Clear all pending volume operations immediately
     int pendingOps = _pendingVolumeOperations.length;
     _pendingVolumeOperations.clear();
-    print('🧹 Emergency cleared $pendingOps pending volume operations');
+    _log('Emergency cleared $pendingOps pending volume operations');
 
     // Cancel all timers
     _alarmTimer?.cancel();
@@ -357,7 +390,7 @@ class AudioService {
       try {
         // First silence immediately to prevent any sound
         await oldPlayer.setVolume(0.0);
-        print('🔇 Emergency mute applied');
+        _log('Emergency mute applied');
 
         // Try multiple disposal methods
         try {
@@ -365,19 +398,22 @@ class AudioService {
           await oldPlayer.pause();
           await oldPlayer.stop();
           await oldPlayer.seek(Duration.zero);
-          print('✅ Player stopped in emergency reset');
+          _log('Player stopped in emergency reset');
         } catch (e) {
-          print('⚠️ Player stop during emergency reset failed: $e');
+          _log(
+            'Player stop during emergency reset failed: $e',
+            level: 'warning',
+          );
         }
 
         try {
           await oldPlayer.dispose();
-          print('✅ Emergency disposal completed');
+          _log('Emergency disposal completed');
         } catch (e) {
-          print('⚠️ Emergency disposal error: $e');
+          _log('Emergency disposal error: $e', level: 'warning');
         }
       } catch (e) {
-        print('❌ Critical emergency reset error: $e');
+        _log('Critical emergency reset error: $e', level: 'error');
       }
     }
 
@@ -391,7 +427,7 @@ class AudioService {
     // Additional system-level audio killswitch would go here if needed
     // For example, on Android you might use platform channels to force audio focus loss
 
-    print('✅ Emergency reset completed - service is clean');
+    _log('Emergency reset completed - service is clean');
   }
 
   void dispose() {
