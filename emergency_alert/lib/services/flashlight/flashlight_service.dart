@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:torch_light/torch_light.dart';
+import '../logger/logger_service.dart';
 
 class FlashlightService {
   static final FlashlightService _instance = FlashlightService._internal();
@@ -17,7 +18,7 @@ class FlashlightService {
     try {
       return await TorchLight.isTorchAvailable();
     } catch (e) {
-      print('Error checking flashlight availability: $e');
+      LoggerService.error('Error checking flashlight availability', e);
       return false;
     }
   }
@@ -32,7 +33,7 @@ class FlashlightService {
       _isFlashlightOn = true;
       return true;
     } catch (e) {
-      print('Error turning on flashlight: $e');
+      LoggerService.error('Error turning on flashlight', e);
       return false;
     }
   }
@@ -43,7 +44,7 @@ class FlashlightService {
       _isFlashlightOn = false;
       return true;
     } catch (e) {
-      print('Error turning off flashlight: $e');
+      LoggerService.error('Error turning off flashlight', e);
       return false;
     }
   }
@@ -86,7 +87,7 @@ class FlashlightService {
         stopFlashing();
       });
     } catch (e) {
-      print('Error starting emergency flashing: $e');
+      LoggerService.error('Error starting emergency flashing', e);
       _isFlashing = false;
     }
   }
@@ -121,7 +122,7 @@ class FlashlightService {
         stopFlashing();
       });
     } catch (e) {
-      print('Error starting SOS flashing: $e');
+      LoggerService.error('Error starting SOS flashing', e);
       _isFlashing = false;
     }
   }
@@ -158,7 +159,7 @@ class FlashlightService {
 
   Future<void> stopFlashing() async {
     try {
-      print('🔦 Stopping flashlight flashing...');
+      LoggerService.info('Stopping flashlight flashing');
       _flashTimer?.cancel();
       _flashTimer = null;
       _isFlashing = false;
@@ -166,9 +167,9 @@ class FlashlightService {
       if (_isFlashlightOn) {
         await turnOff();
       }
-      print('✅ Flashlight flashing stopped');
+      LoggerService.info('Flashlight flashing stopped');
     } catch (e) {
-      print('❌ Error stopping flashing: $e');
+      LoggerService.error('Error stopping flashing', e);
     }
   }
 
@@ -183,7 +184,7 @@ class FlashlightService {
       await turnOff();
       return true;
     } catch (e) {
-      print('Flashlight test failed: $e');
+      LoggerService.error('Flashlight test failed', e);
       return false;
     }
   }

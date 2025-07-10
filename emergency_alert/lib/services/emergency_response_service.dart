@@ -164,7 +164,6 @@ class EmergencyResponseService {
       LoggerService.warning(
         'Attempted to send emergency immediately but no active alert',
       );
-      print('⚠️ Attempted to send emergency immediately but no active alert');
       return;
     }
 
@@ -177,17 +176,11 @@ class EmergencyResponseService {
         final remainingTime = Duration(minutes: 2) - timeSinceLastSms;
 
         LoggerService.warning(
-          '⚠️ SMS was already sent ${timeSinceLastSms.inSeconds} seconds ago - but proceeding with manual send request (${remainingTime.inSeconds}s remaining in cooldown)',
-        );
-        print(
-          '⚠️ Warning: SMS was already sent ${timeSinceLastSms.inSeconds} seconds ago, but proceeding with manual send (${remainingTime.inSeconds}s remaining)',
+          'SMS was already sent ${timeSinceLastSms.inSeconds} seconds ago - but proceeding with manual send request (${remainingTime.inSeconds}s remaining in cooldown)',
         );
       }
 
-      LoggerService.info(
-        '🚨 SENDING EMERGENCY IMMEDIATELY - Bypassing countdown',
-      );
-      print('🚨 User pressed Send Now - Sending emergency immediately');
+      LoggerService.info('SENDING EMERGENCY IMMEDIATELY - Bypassing countdown');
 
       // Cancel countdown timer
       _emergencyCountdown?.cancel();
@@ -198,11 +191,9 @@ class EmergencyResponseService {
         LoggerService.warning(
           'No emergency contacts configured - cannot send alerts',
         );
-        print('⚠️ No emergency contacts configured - cannot send alerts');
         return;
       }
 
-      print('📞 Found ${contacts.length} emergency contacts');
       LoggerService.info(
         'Found ${contacts.length} emergency contacts: ${contacts.map((c) => c.name).join(", ")}',
       );
@@ -222,9 +213,9 @@ class EmergencyResponseService {
           if (location.isFallback) {
             locationInfo = '(Last known $locationInfo)';
           }
-          print('📍 Location retrieved: $locationInfo');
+          LoggerService.info('Location retrieved: $locationInfo');
         } else {
-          print('⚠️ Could not retrieve current location');
+          LoggerService.warning('Could not retrieve current location');
           // Use last known location from alert if available
           if (_currentAlert!.latitude != null &&
               _currentAlert!.longitude != null) {
@@ -233,15 +224,14 @@ class EmergencyResponseService {
             if (_currentAlert!.address != null) {
               locationInfo = '${_currentAlert!.address}';
             }
-            print('📍 Using cached location: $locationInfo');
+            LoggerService.info('Using cached location: $locationInfo');
           } else {
             locationInfo = 'Location unavailable';
-            print('⚠️ No location data available');
+            LoggerService.warning('No location data available');
           }
         }
       } catch (e) {
         LoggerService.error('Error getting location: $e');
-        print('⚠️ Error getting location: $e');
         locationInfo = 'Location unavailable due to error';
       }
 
@@ -250,14 +240,15 @@ class EmergencyResponseService {
       final hasPermission = await smsService.checkPermissions();
 
       if (!hasPermission) {
-        LoggerService.error('❌ SMS permission not granted at critical moment!');
-        print('❌ SMS permission not granted at critical moment!');
+        LoggerService.error('SMS permission not granted at critical moment!');
         // We'll attempt to request permission again
         final permissionRetry = await smsService.checkPermissions();
         if (!permissionRetry) {
-          print('❌ SMS permission retry failed - still trying to send');
+          LoggerService.error(
+            'SMS permission retry failed - still trying to send',
+          );
         } else {
-          print('✅ SMS permission granted on retry');
+          LoggerService.info('SMS permission granted on retry');
         }
       }
 
@@ -269,7 +260,6 @@ class EmergencyResponseService {
       while (!success && attempts < maxAttempts) {
         attempts++;
         LoggerService.info('Sending emergency alerts - attempt $attempts');
-        print('📤 Sending emergency alerts - attempt $attempts');
 
         // Try with increased timeout between retries
         success = await _sendEmergencyAlerts(
@@ -281,14 +271,15 @@ class EmergencyResponseService {
         if (!success && attempts < maxAttempts) {
           // Wait longer between retries
           final delay = attempts * 2; // Increasing delay with each retry
-          print('⏱️ Waiting $delay seconds before retry ${attempts + 1}');
+          LoggerService.info(
+            'Waiting $delay seconds before retry ${attempts + 1}',
+          );
           await Future.delayed(Duration(seconds: delay));
         }
       }
 
       if (success) {
-        LoggerService.info('✅ Emergency sent immediately - SUCCESS');
-        print('✅ Emergency alerts sent successfully');
+        LoggerService.info('Emergency sent immediately - SUCCESS');
 
         // Update alert status
         final updatedAlert = _currentAlert!.copyWith(
@@ -301,10 +292,7 @@ class EmergencyResponseService {
         // Ensure it's saved to history
         await _saveAlertToHistory(updatedAlert);
       } else {
-        LoggerService.warning(
-          '⚠️ All attempts to send emergency alerts failed',
-        );
-        print('⚠️ All $maxAttempts attempts to send emergency alerts failed');
+        LoggerService.warning('All attempts to send emergency alerts failed');
 
         // Update alert status to failed
         final failedAlert = _currentAlert!.copyWith(status: AlertStatus.failed);
@@ -316,7 +304,6 @@ class EmergencyResponseService {
       }
     } catch (e) {
       LoggerService.error('Error sending emergency immediately: $e');
-      print('❌ Error sending emergency immediately: $e');
 
       // Update alert status to failed on exception
       if (_currentAlert != null) {
@@ -397,9 +384,6 @@ class EmergencyResponseService {
 
             // Send emergency alerts after countdown
             LoggerService.info('Countdown finished - sending emergency alerts');
-            print(
-              '⏱️ Countdown finished - sending emergency alerts automatically',
-            );
 
             // Ensure the alert wasn't cancelled during countdown
             if (_isEmergencyActive && _currentAlert != null) {
@@ -411,10 +395,7 @@ class EmergencyResponseService {
                 final remainingTime = Duration(minutes: 2) - timeSinceLastSms;
 
                 LoggerService.info(
-                  '⚠️ SMS was already sent ${timeSinceLastSms.inSeconds} seconds ago - skipping automatic send (${remainingTime.inSeconds}s remaining)',
-                );
-                print(
-                  '⚠️ SMS was already sent ${timeSinceLastSms.inSeconds} seconds ago - skipping automatic send to prevent duplicates (${remainingTime.inSeconds}s until next allowed)',
+                  'SMS was already sent ${timeSinceLastSms.inSeconds} seconds ago - skipping automatic send (${remainingTime.inSeconds}s remaining)',
                 );
                 return;
               }
@@ -428,9 +409,6 @@ class EmergencyResponseService {
                 attempts++;
                 LoggerService.info(
                   'Sending automatic emergency alerts - attempt $attempts',
-                );
-                print(
-                  '📤 Sending automatic emergency alerts - attempt $attempts',
                 );
 
                 success = await _sendEmergencyAlerts(
@@ -449,23 +427,16 @@ class EmergencyResponseService {
                 LoggerService.error(
                   'Failed to send automatic emergency alerts after $maxAttempts attempts',
                 );
-                print(
-                  '❌ Failed to send automatic emergency alerts after $maxAttempts attempts',
-                );
               }
             } else {
               LoggerService.info(
                 'Emergency was cancelled during countdown - not sending alerts',
-              );
-              print(
-                '🛑 Emergency was cancelled during countdown - not sending alerts',
               );
             }
           }
         } catch (timerError) {
           // Prevent timer callback errors from crashing the app
           LoggerService.error('Error in countdown timer callback: $timerError');
-          print('❌ Error in countdown timer: $timerError');
 
           // Cancel the timer if there's an error to prevent repeated errors
           timer.cancel();
@@ -482,7 +453,6 @@ class EmergencyResponseService {
       });
     } catch (e) {
       LoggerService.error('Error starting countdown timer: $e');
-      print('❌ Error starting countdown: $e');
 
       // Try to send alerts anyway if we couldn't set up the countdown
       try {
@@ -506,11 +476,9 @@ class EmergencyResponseService {
       LoggerService.info(
         'Sending emergency alerts to ${contacts.length} contacts',
       );
-      print('📱 Attempting to send SMS to ${contacts.length} contacts');
 
       if (contacts.isEmpty) {
         LoggerService.warning('No emergency contacts to send alerts to');
-        print('⚠️ No emergency contacts to send alerts to');
         return false;
       }
 
@@ -522,16 +490,12 @@ class EmergencyResponseService {
         LoggerService.error(
           'SMS permission not granted - trying to request it',
         );
-        print('⚠️ SMS permission not granted - trying to request it');
 
         // Try to request permission again
         final permissionRetry = await smsService.checkPermissions();
         if (!permissionRetry) {
           LoggerService.error(
             'SMS permission denied after retry - attempting to send anyway',
-          );
-          print(
-            '⚠️ SMS permission denied after retry - attempting to send anyway',
           );
         }
       }
@@ -544,16 +508,12 @@ class EmergencyResponseService {
       );
 
       if (success) {
-        LoggerService.info('✅ Emergency SMS alerts sent successfully');
-        print('✅ Emergency SMS alerts sent successfully');
-
+        LoggerService.info('Emergency SMS alerts sent successfully');
         // Update last SMS sent timestamp to prevent duplicates
         _lastSmsSentTimestamp = DateTime.now();
-        LoggerService.info('📝 SMS timestamp recorded: $_lastSmsSentTimestamp');
-        print('📝 SMS timestamp recorded to prevent duplicate sends');
+        LoggerService.info('SMS timestamp recorded: $_lastSmsSentTimestamp');
       } else {
-        LoggerService.error('❌ Failed to send emergency SMS alerts');
-        print('❌ Failed to send emergency SMS alerts');
+        LoggerService.error('Failed to send emergency SMS alerts');
       }
 
       // Update alert status
@@ -581,7 +541,6 @@ class EmergencyResponseService {
       return success;
     } catch (e) {
       LoggerService.error('Error sending emergency alerts: $e');
-      print('❌ Error sending emergency alerts: $e');
 
       // Mark as failed
       final failedAlert = alert.copyWith(status: AlertStatus.failed);
@@ -644,7 +603,7 @@ class EmergencyResponseService {
   /// Stop only local alerts (audio, vibration, flashlight) without canceling emergency
   Future<void> stopLocalAlerts() async {
     try {
-      LoggerService.info('🚫 Stopping local alerts only...');
+      LoggerService.info('Stopping local alerts only...');
 
       // Check initial states
       LoggerService.debug('Audio playing: ${_audioService.isPlaying}');
@@ -742,23 +701,23 @@ class EmergencyResponseService {
       }
 
       LoggerService.info(
-        '✅ Local alerts stopped - emergency countdown continues',
+        'Local alerts stopped - emergency countdown continues',
       );
     } catch (e) {
-      LoggerService.error('❌ Error stopping local alerts: $e');
+      LoggerService.error('Error stopping local alerts: $e');
       // As a last resort, try emergency reset for all services
       try {
         LoggerService.warning(
-          '🧨 Using nuclear option - emergency reset all services',
+          'Using nuclear option - emergency reset all services',
         );
         await Future.wait([
           _audioService.emergencyReset(),
           _vibrationService.stopVibration(),
           _flashlightService.stopFlashing(),
         ]);
-        LoggerService.info('✅ Emergency reset completed as fallback');
+        LoggerService.info('Emergency reset completed as fallback');
       } catch (resetError) {
-        LoggerService.error('❌ Emergency reset also failed: $resetError');
+        LoggerService.error('Emergency reset also failed: $resetError');
       }
     }
   }
@@ -896,7 +855,7 @@ class EmergencyResponseService {
           const Duration(seconds: 15),
           onTimeout: () {
             LoggerService.warning('Location fetch timed out after 15 seconds');
-            print('⚠️ Location fetch timed out after 15 seconds');
+
             return null;
           },
         );
@@ -905,15 +864,16 @@ class EmergencyResponseService {
           locationInfo =
               location.address ??
               'Location: ${location.latitude}, ${location.longitude}';
-          print('📍 Location retrieved: $locationInfo');
+          LoggerService.info('Location retrieved: $locationInfo');
         } else {
-          print('⚠️ Could not retrieve location for background data gathering');
+          LoggerService.warning(
+            'Could not retrieve location for background data gathering',
+          );
           locationInfo = 'Location unavailable';
         }
       } catch (locError) {
         // Handle location errors gracefully
         LoggerService.error('Error getting location in background: $locError');
-        print('⚠️ Error getting location in background: $locError');
         // Continue without location
       }
 
@@ -931,7 +891,6 @@ class EmergencyResponseService {
       await _startCountdown(updatedAlert, contacts, locationInfo);
     } catch (e) {
       LoggerService.error('Error in background data gathering: $e');
-      print('❌ Error in background data gathering: $e');
       // Continue with basic alert even if data gathering fails
     }
   }

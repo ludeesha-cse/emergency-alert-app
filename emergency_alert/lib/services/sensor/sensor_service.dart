@@ -4,6 +4,7 @@ import 'package:sensors_plus/sensors_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/sensor_data.dart';
 import '../../utils/constants.dart';
+import '../logger/logger_service.dart';
 
 class SensorService {
   static final SensorService _instance = SensorService._internal();
@@ -227,7 +228,7 @@ class SensorService {
         _consecutiveHighReadings = 0;
 
         // Trigger impact detection
-        print(
+        LoggerService.debug(
           'Impact detected: magnitude=$magnitude, baseline=$_baselineMagnitude, change=$magnitudeChange',
         );
         _impactDetectedController.add(true);
@@ -294,7 +295,7 @@ class SensorService {
     if (_recentMagnitudes.length >= 5) {
       _baselineMagnitude =
           _recentMagnitudes.reduce((a, b) => a + b) / _recentMagnitudes.length;
-      print('Baseline calibrated to: $_baselineMagnitude');
+      LoggerService.info('Baseline calibrated to: $_baselineMagnitude');
     }
   }
 

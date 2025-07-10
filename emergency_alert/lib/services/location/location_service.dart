@@ -91,18 +91,21 @@ class LocationService {
 
       // Try to get current position with a timeout
       try {
-        final position = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.high,
-            distanceFilter: 10,
-          ),
-        ).timeout(
-          const Duration(seconds: 10),
-          onTimeout: () {
-            LoggerService.warning('Location request timed out after 10 seconds');
-            throw TimeoutException('Location request timed out');
-          },
-        );
+        final position =
+            await Geolocator.getCurrentPosition(
+              locationSettings: const LocationSettings(
+                accuracy: LocationAccuracy.high,
+                distanceFilter: 10,
+              ),
+            ).timeout(
+              const Duration(seconds: 10),
+              onTimeout: () {
+                LoggerService.warning(
+                  'Location request timed out after 10 seconds',
+                );
+                throw TimeoutException('Location request timed out');
+              },
+            );
 
         final locationData = LocationData(
           latitude: position.latitude,
@@ -142,7 +145,9 @@ class LocationService {
             return null;
           }
         } catch (fallbackError) {
-          LoggerService.error('Error getting last known position: $fallbackError');
+          LoggerService.error(
+            'Error getting last known position: $fallbackError',
+          );
           return null;
         }
       }
@@ -183,7 +188,7 @@ class LocationService {
             _locationController.add(locationData);
           },
           onError: (error) {
-            print('Location tracking error: $error');
+            LoggerService.error('Location tracking error: $error');
           },
         );
   }
@@ -213,7 +218,7 @@ class LocationService {
             .replaceAll(RegExp(r',\s*,'), ','); // Remove double commas
       }
     } catch (e) {
-      print('Error getting address: $e');
+      LoggerService.error('Error getting address: $e');
     }
     return null;
   }

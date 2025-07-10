@@ -256,7 +256,7 @@ class _HomeScreenState extends State<HomeScreen> {
             actions: [
               TextButton(
                 onPressed: () async {
-                  print('🛑 Emergency cancelled by user');
+                  LoggerService.info('Emergency cancelled by user');
                   Navigator.of(context).pop();
                   _isEmergencyModalShowing = false;
                   await _emergencyService.cancelEmergency();
@@ -280,7 +280,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               TextButton(
                 onPressed: () async {
-                  print('🔇 Stopping local alerts only');
+                  LoggerService.info('Stopping local alerts only');
                   await _stopLocalAlert();
                 },
                 style: TextButton.styleFrom(foregroundColor: Colors.orange),
@@ -310,7 +310,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Stop local alert sounds, vibration, and flashlight without cancelling the emergency
   Future<void> _stopLocalAlert() async {
     try {
-      print('🔇 User requested to stop local alerts');
+      LoggerService.info('User requested to stop local alerts');
 
       // Use the emergency service's centralized method to stop local alerts
       await _emergencyService.stopLocalAlerts();
@@ -359,7 +359,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       // Last resort fallback if both methods fail
-      print('⚠️ Could not show snackbar: $e');
+      LoggerService.warning('Could not show snackbar: $e');
     }
   }
 
@@ -408,7 +408,7 @@ class _HomeScreenState extends State<HomeScreen> {
         const SnackBar(content: Text('Emergency monitoring started')),
       );
     } catch (e) {
-      print('Error starting monitoring: $e');
+      LoggerService.error('Error starting monitoring: $e');
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Error starting monitoring: $e')));
@@ -636,8 +636,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 8), // Panic Button
                 ElevatedButton.icon(
                   onPressed: () {
-                    print(
-                      '🚨 PANIC BUTTON PRESSED - Starting immediate response',
+                    LoggerService.info(
+                      'PANIC BUTTON PRESSED - Starting immediate response',
                     );
 
                     // Show immediate feedback
@@ -656,10 +656,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     _emergencyService
                         .triggerImmediateManualEmergency()
                         .then((_) {
-                          print('✅ Emergency service triggered');
+                          LoggerService.info('Emergency service triggered');
                         })
                         .catchError((e) {
-                          print('❌ Error triggering emergency service: $e');
+                          LoggerService.error(
+                            'Error triggering emergency service: $e',
+                          );
                         });
                   },
                   icon: const Icon(Icons.warning),
@@ -691,8 +693,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           onPressed: shouldEnable
                               ? () async {
                                   try {
-                                    print(
-                                      '🔇 User requested to stop all local alerts',
+                                    LoggerService.info(
+                                      'User requested to stop all local alerts',
                                     );
 
                                     // Stop all local alerts
@@ -713,7 +715,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                       );
                                     }
                                   } catch (e) {
-                                    print('❌ Error stopping local alerts: $e');
+                                    LoggerService.error(
+                                      'Error stopping local alerts: $e',
+                                    );
                                     if (mounted) {
                                       ScaffoldMessenger.of(
                                         context,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/contact.dart';
 import '../../services/sms/sms_service.dart';
 import '../../services/contact_storage_service.dart';
+import '../../services/logger/logger_service.dart';
 
 class ContactsScreen extends StatefulWidget {
   const ContactsScreen({super.key});
@@ -35,7 +36,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      print('Error loading contacts: $e');
+      LoggerService.error('Error loading contacts', e);
       setState(() {
         _isLoading = false;
       });

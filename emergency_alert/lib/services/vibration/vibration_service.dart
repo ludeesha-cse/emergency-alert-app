@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:vibration/vibration.dart';
+import '../logger/logger_service.dart';
 
 class VibrationService {
   static final VibrationService _instance = VibrationService._internal();
@@ -14,7 +15,7 @@ class VibrationService {
     try {
       return await Vibration.hasVibrator();
     } catch (e) {
-      print('Error checking vibrator availability: $e');
+      LoggerService.error('Error checking vibrator availability', e);
       return false;
     }
   }
@@ -23,7 +24,7 @@ class VibrationService {
     try {
       return await Vibration.hasAmplitudeControl();
     } catch (e) {
-      print('Error checking amplitude control: $e');
+      LoggerService.error('Error checking amplitude control', e);
       return false;
     }
   }
@@ -45,7 +46,7 @@ class VibrationService {
         durationSeconds,
       );
     } catch (e) {
-      print('Error in emergency vibration: $e');
+      LoggerService.error('Error in emergency vibration', e);
       _isVibrating = false;
     }
   }
@@ -59,7 +60,7 @@ class VibrationService {
         pattern: [0, 500, 250, 500], // Alert pattern: medium-short
       );
     } catch (e) {
-      print('Error in alert vibration: $e');
+      LoggerService.error('Error in alert vibration', e);
     }
   }
 
@@ -72,7 +73,7 @@ class VibrationService {
         pattern: [0, 200, 100, 200], // Notification pattern: short-very short
       );
     } catch (e) {
-      print('Error in notification vibration: $e');
+      LoggerService.error('Error in notification vibration', e);
     }
   }
 
@@ -97,7 +98,7 @@ class VibrationService {
 
       await _startPatternVibration(sosPattern, durationSeconds);
     } catch (e) {
-      print('Error in SOS vibration: $e');
+      LoggerService.error('Error in SOS vibration', e);
       _isVibrating = false;
     }
   }
@@ -122,7 +123,7 @@ class VibrationService {
         }
       }
     } catch (e) {
-      print('Error in custom vibration: $e');
+      LoggerService.error('Error in custom vibration', e);
     }
   }
 
@@ -147,15 +148,15 @@ class VibrationService {
 
   Future<void> stopVibration() async {
     try {
-      print('📳 Stopping vibration...');
+      LoggerService.info('Stopping vibration');
       _vibrationTimer?.cancel();
       _vibrationTimer = null;
       _isVibrating = false;
 
       await Vibration.cancel();
-      print('✅ Vibration stopped');
+      LoggerService.info('Vibration stopped');
     } catch (e) {
-      print('❌ Error stopping vibration: $e');
+      LoggerService.error('Error stopping vibration', e);
     }
   }
 
@@ -168,7 +169,7 @@ class VibrationService {
       await vibrateNotification();
       return true;
     } catch (e) {
-      print('Vibration test failed: $e');
+      LoggerService.error('Vibration test failed', e);
       return false;
     }
   }
