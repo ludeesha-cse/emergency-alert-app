@@ -41,9 +41,15 @@ class SensorService {
   int _accelerometerSamplingRate = SensorConstants.accelerometerSensitivity;
   int _gyroscopeSamplingRate = SensorConstants.gyroscopeSamplingRate;
 
+  // User-configurable thresholds
+  double _fallDetectionThreshold = AppConstants.fallDetectionThreshold;
+  double _impactDetectionThreshold = AppConstants.impactDetectionThreshold;
+
   bool get isMonitoring => _isMonitoring;
   bool get fallDetectionEnabled => _fallDetectionEnabled;
   bool get impactDetectionEnabled => _impactDetectionEnabled;
+  double get fallDetectionThreshold => _fallDetectionThreshold;
+  double get impactDetectionThreshold => _impactDetectionThreshold;
 
   void setFallDetectionEnabled(bool enabled) {
     _fallDetectionEnabled = enabled;
@@ -53,8 +59,8 @@ class SensorService {
     _impactDetectionEnabled = enabled;
   }
 
-  /// Load user-configurable sampling rates from SharedPreferences
-  Future<void> _loadSamplingRates() async {
+  /// Load user-configurable sampling rates and thresholds from SharedPreferences
+  Future<void> _loadUserSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       _accelerometerSamplingRate =
@@ -63,18 +69,28 @@ class SensorService {
       _gyroscopeSamplingRate =
           prefs.getInt('gyroscope_sampling_rate') ??
           SensorConstants.gyroscopeSamplingRate;
+
+      // Load threshold settings
+      _fallDetectionThreshold =
+          prefs.getDouble('fall_threshold') ??
+          AppConstants.fallDetectionThreshold;
+      _impactDetectionThreshold =
+          prefs.getDouble('impact_threshold') ??
+          AppConstants.impactDetectionThreshold;
     } catch (e) {
       // If there's an error loading preferences, use default values
       _accelerometerSamplingRate = SensorConstants.accelerometerSensitivity;
       _gyroscopeSamplingRate = SensorConstants.gyroscopeSamplingRate;
+      _fallDetectionThreshold = AppConstants.fallDetectionThreshold;
+      _impactDetectionThreshold = AppConstants.impactDetectionThreshold;
     }
   }
 
   Future<void> startMonitoring() async {
     if (_isMonitoring) return;
 
-    // Load user-configurable sampling rates
-    await _loadSamplingRates();
+    // Load user-configurable sampling rates and thresholds
+    await _loadUserSettings();
 
     _isMonitoring = true;
 
@@ -160,8 +176,8 @@ class SensorService {
     if (_accelerometerMagnitudes.isNotEmpty) {
       final recentMagnitude = _accelerometerMagnitudes.last;
 
-      // Check for impact after free fall
-      if (recentMagnitude > AppConstants.fallDetectionThreshold) {
+      // Check for impact after free fall using user-configurable threshold
+      if (recentMagnitude > _fallDetectionThreshold) {
         _fallDetectedController.add(true);
       }
     }
@@ -209,8 +225,7 @@ class SensorService {
     }
 
     // Check if magnitude change exceeds threshold AND device is moving
-    if (magnitudeChange > AppConstants.impactDetectionThreshold &&
-        isDeviceMoving) {
+    if (magnitudeChange > _impactDetectionThreshold && isDeviceMoving) {
       _consecutiveHighReadings++;
 
       // Require multiple consecutive high readings to confirm impact
@@ -311,11 +326,14 @@ class SensorService {
     return (magnitude - _baselineMagnitude).abs();
   }
 
-  /// Restart monitoring with updated settings (e.g., new sampling rates)
+  /// Restart monitoring with updated settings (e.g., new sampling rates and thresholds)
   Future<void> restartMonitoringWithNewSettings() async {
     if (_isMonitoring) {
       await stopMonitoring();
       await startMonitoring();
+    } else {
+      // Even if not monitoring, load the new settings for when monitoring starts
+      await _loadUserSettings();
     }
   }
 }

@@ -1,9 +1,9 @@
 class AppConstants {
-  // Sensor thresholds
+  // Sensor thresholds (default values - actual values are user-configurable via settings)
   static const double fallDetectionThreshold =
       2.5; // G-force threshold for fall detection
   static const double impactDetectionThreshold =
-      15.0; // G-force threshold for impact detection (increased to reduce false positives)
+      4.0; // G-force threshold for impact detection (increased sensitivity for better detection)
   static const int sensorSamplingRate = 50; // Hz
   static const int sensorBufferSize =
       100; // Number of samples to keep in buffer

@@ -197,6 +197,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             (value) {
               setState(() => _fallThreshold = value);
               _saveSetting('fall_threshold', value);
+              _debounceRestartMonitoring();
             },
           ),
           _buildSliderTile(
@@ -209,6 +210,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             (value) {
               setState(() => _impactThreshold = value);
               _saveSetting('impact_threshold', value);
+              _debounceRestartMonitoring();
             },
           ),
 
